@@ -37,6 +37,36 @@ class ResourceWriter:
     def has_toolchain(self) -> bool:
         return self._resource_toolchain_commands() is not None
 
+    @staticmethod
+    def backup_root(install_dir: Path) -> Path:
+        return Path(install_dir) / "FLAtlas-Translator-Backups"
+
+    @staticmethod
+    def list_backups(install_dir: Path) -> list[Path]:
+        root = ResourceWriter.backup_root(install_dir)
+        if not root.is_dir():
+            return []
+        return sorted((path for path in root.iterdir() if path.is_dir()), reverse=True)
+
+    @staticmethod
+    def restore_backup(install_dir: Path, backup_dir: Path) -> tuple[Path, ...]:
+        install_dir = Path(install_dir)
+        backup_dir = Path(backup_dir)
+        if not install_dir.is_dir():
+            raise FileNotFoundError(f"Install dir not found: {install_dir}")
+        if not backup_dir.is_dir():
+            raise FileNotFoundError(f"Backup dir not found: {backup_dir}")
+        written_files: list[Path] = []
+        for dll_path in backup_dir.glob("*.dll"):
+            target_path = install_dir / "EXE" / dll_path.name
+            if not target_path.parent.is_dir():
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dll_path, target_path)
+            written_files.append(target_path)
+        if not written_files:
+            raise RuntimeError("Backup does not contain any DLL files.")
+        return tuple(written_files)
+
     def apply_german_relocalization(
         self,
         catalog: ResourceCatalog,
@@ -108,28 +138,41 @@ class ResourceWriter:
     @staticmethod
     def install_script_candidates() -> list[Path]:
         project_root = Path(__file__).resolve().parent.parent.parent
-        candidates = [project_root / "scripts" / "install_ids_toolchain_windows.cmd"]
+        candidates = [
+            project_root / "scripts" / "install_ids_toolchain_windows.cmd",
+            project_root / "scripts" / "install_fllingo_file_association.cmd",
+        ]
         if getattr(sys, "frozen", False):
             exe_dir = Path(sys.executable).resolve().parent
             candidates.extend(
                 [
                     exe_dir / "scripts" / "install_ids_toolchain_windows.cmd",
+                    exe_dir / "scripts" / "install_fllingo_file_association.cmd",
                     exe_dir / "_internal" / "scripts" / "install_ids_toolchain_windows.cmd",
+                    exe_dir / "_internal" / "scripts" / "install_fllingo_file_association.cmd",
                 ]
             )
         return [path for path in candidates if path.exists()]
 
     @staticmethod
     def launch_toolchain_installer() -> Path:
-        script_path = next(iter(ResourceWriter.install_script_candidates()), None)
+        script_path = next((path for path in ResourceWriter.install_script_candidates() if path.name == "install_ids_toolchain_windows.cmd"), None)
         if script_path is None:
             raise FileNotFoundError("Toolchain installer script not found.")
         subprocess.Popen(["cmd.exe", "/c", str(script_path)], cwd=str(script_path.parent))
         return script_path
 
     @staticmethod
+    def install_file_association() -> Path:
+        script_path = next((path for path in ResourceWriter.install_script_candidates() if path.name == "install_fllingo_file_association.cmd"), None)
+        if script_path is None:
+            raise FileNotFoundError("File association installer script not found.")
+        subprocess.Popen(["cmd.exe", "/c", str(script_path)], cwd=str(script_path.parent))
+        return script_path
+
+    @staticmethod
     def _make_backup_dir(install_dir: Path, backup_root: Path | None) -> Path:
-        base = backup_root or (install_dir / "FLAtlas-Translator-Backups")
+        base = backup_root or ResourceWriter.backup_root(install_dir)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         path = base / stamp
         path.mkdir(parents=True, exist_ok=True)

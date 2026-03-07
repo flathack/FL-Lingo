@@ -12,13 +12,14 @@ except ImportError:
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    app_title: str = "FLAtlas Translator"
+    app_title: str = "FL Lingo"
     app_version: str = "0.1.0"
     developed_by: str = "Developed by Aldenmar Odin - flathack"
     default_language: str = "de"
     default_theme: str = "light"
     default_source_language: str = "en"
     default_target_language: str = "de"
+    startup_project_path: str | None = None
 
 
 def main(config: AppConfig | None = None) -> int:

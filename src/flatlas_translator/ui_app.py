@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QAction, QCursor
+from PySide6.QtGui import QAction, QCloseEvent, QCursor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -35,6 +36,7 @@ from .catalog import CatalogLoader, pair_catalogs
 from .dll_plans import DllRelocalizationPlan, DllStrategy, build_dll_plans
 from .exporters import export_catalog_json
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
+from .project_io import PROJECT_FILE_EXTENSION, TranslatorProject, load_project, project_signature, save_project
 from .resource_writer import ApplyReport, ResourceWriter
 from .stats import summarize_catalog
 from .translation_exchange import export_mod_only_exchange, import_exchange, update_manual_translation
@@ -45,8 +47,9 @@ STRINGS = {
         "group.installs": "Installationen",
         "group.filters": "Filter",
         "group.dll_analysis": "DLL-Analyse",
-        "label.source_install": "Quellinstallation",
-        "label.target_install": "Zielreferenzinstallation",
+        "group.project": "Projektstatus",
+        "label.source_install": "Spiel mit Mod / aktuelles Spiel",
+        "label.target_install": "Deutsche Referenz / Vergleichsspiel",
         "label.source_language": "Quellsprache",
         "label.target_language": "Zielsprache",
         "btn.browse": "Ordner...",
@@ -90,6 +93,10 @@ STRINGS = {
         "toolchain.unavailable": "nicht verfuegbar",
         "detail.none": "Keine Auswahl.",
         "summary.none": "Noch kein Katalog geladen.",
+        "project.none": "Kein Projekt geladen",
+        "project.info": "Projekt: {name} | Status: {dirty} | Manuelle Eintraege: {manual} | Sichtbar: {visible}",
+        "project.saved": "gespeichert",
+        "project.unsaved": "nicht gespeichert",
         "plan.action.full": "Ziel-DLL komplett kopieren",
         "plan.action.patch": "nur passende Eintraege patchen",
         "plan.action.unsafe": "nicht automatisch ersetzen",
@@ -105,8 +112,16 @@ STRINGS = {
         "menuitem.focus_units": "Eintragsliste fokussieren",
         "menuitem.appearance": "Darstellung...",
         "menuitem.about": "Ueber",
+        "menuitem.project_load": "Projekt laden...",
+        "menuitem.project_new": "Neues Projekt",
+        "menuitem.project_save": "Projekt speichern...",
+        "menuitem.restore_backup": "Backup wiederherstellen...",
+        "menuitem.file_assoc": ".FLLingo verknuepfen...",
         "status.loaded_source": "Quellinstallation geladen: {path}",
         "status.loaded_compare": "Vergleich geladen: {path}",
+        "status.project_saved": "Projekt gespeichert: {path}",
+        "status.project_loaded": "Projekt geladen: {path}",
+        "status.project_new": "Neues Projekt gestartet.",
         "status.settings_applied": "Einstellungen angewendet.",
         "status.language_changed": "Sprache gewechselt.",
         "status.toolchain_started": "Toolchain-Installer gestartet.",
@@ -125,16 +140,33 @@ STRINGS = {
         "error.import_failed": "Import fehlgeschlagen:\n{error}",
         "error.apply_failed": "Uebersetzungen konnten nicht angewendet werden:\n{error}",
         "error.toolchain_start_failed": "Toolchain-Installer konnte nicht gestartet werden:\n{error}",
+        "error.project_save_failed": "Projekt konnte nicht gespeichert werden:\n{error}",
+        "error.project_load_failed": "Projekt konnte nicht geladen werden:\n{error}",
+        "error.file_assoc_failed": "Dateizuordnung konnte nicht eingerichtet werden:\n{error}",
         "dialog.export_visible": "Sichtbaren Datensatz exportieren",
         "dialog.export_auto": "Auto-Ziel Datensatz exportieren",
+        "dialog.project_save": "Projekt speichern",
+        "dialog.project_load": "Projekt laden",
+        "dialog.file_assoc": ".FLLingo verknuepfen",
+        "dialog.file_assoc_done": "Dateizuordnung eingerichtet.\n\n{path}",
+        "dialog.unsaved_title": "Ungespeicherte Aenderungen",
+        "dialog.unsaved_message": "Es gibt ungespeicherte Aenderungen im aktuellen Projekt.\n\nVor dem Fortfahren speichern?",
         "dialog.apply_title": "Uebersetzungen anwenden",
         "dialog.apply_confirm": "Es werden {count} Eintraege ersetzt. Vorher wird ein Backup angelegt.\n\nFortfahren?",
+        "dialog.apply_preview": "Anwenden-Vorschau",
+        "dialog.restore_backup": "Backup wiederherstellen",
+        "dialog.restore_confirm": "Backup wiederherstellen und aktuelle DLLs ueberschreiben?\n\n{path}",
         "dialog.apply_success": "Uebersetzungen abgeschlossen.\n\nErsetzte Eintraege: {count}\nGeschriebene DLLs: {dlls}\nBackup: {backup}",
+        "dialog.restore_success": "Backup wiederhergestellt.\n\nDLLs: {count}\nQuelle: {path}",
         "dialog.toolchain_title": "Toolchain installieren",
         "dialog.toolchain_started": "Installer gestartet:\n{path}",
         "status.manual_saved": "Manuelle Uebersetzung gespeichert.",
         "status.manual_reset": "Manuelle Uebersetzung zurueckgesetzt.",
+        "status.backup_restored": "Backup wiederhergestellt: {path}",
+        "status.file_assoc_done": ".FLLingo verknuepft.",
         "error.select_entry": "Bitte zuerst einen Eintrag auswaehlen.",
+        "error.no_backups": "Keine Backups fuer diese Installation gefunden.",
+        "error.restore_failed": "Backup konnte nicht wiederhergestellt werden:\n{error}",
         "summary.visible": "Sichtbar {visible}/{total}",
         "summary.full": "DLL komplett ersetzbar {count}",
         "summary.patch": "DLL teilweise {count}",
@@ -146,6 +178,10 @@ STRINGS = {
         "detail.reference": "Zielreferenz",
         "detail.manual": "Manuell",
         "detail.changed": "Geaendert",
+        "status.auto_relocalize": "Automatisch uebernehmbar",
+        "status.already_localized": "Bereits in Zielsprache",
+        "status.manual_translation": "Manuell uebersetzt",
+        "status.mod_only": "Nur Mod-Inhalt",
         "yes": "ja",
         "no": "nein",
     },
@@ -154,8 +190,9 @@ STRINGS = {
         "group.installs": "Installs",
         "group.filters": "Filters",
         "group.dll_analysis": "DLL Analysis",
-        "label.source_install": "Source install",
-        "label.target_install": "Target reference install",
+        "group.project": "Project Status",
+        "label.source_install": "Game with mod / current game",
+        "label.target_install": "German reference / comparison game",
         "label.source_language": "Source language",
         "label.target_language": "Target language",
         "btn.browse": "Browse...",
@@ -199,6 +236,10 @@ STRINGS = {
         "toolchain.unavailable": "not available",
         "detail.none": "No selection.",
         "summary.none": "No catalog loaded.",
+        "project.none": "No project loaded",
+        "project.info": "Project: {name} | Status: {dirty} | Manual entries: {manual} | Visible: {visible}",
+        "project.saved": "saved",
+        "project.unsaved": "unsaved",
         "plan.action.full": "copy target DLL",
         "plan.action.patch": "patch matching entries only",
         "plan.action.unsafe": "do not replace automatically",
@@ -214,8 +255,16 @@ STRINGS = {
         "menuitem.focus_units": "Focus entries",
         "menuitem.appearance": "Appearance...",
         "menuitem.about": "About",
+        "menuitem.project_load": "Load project...",
+        "menuitem.project_new": "New project",
+        "menuitem.project_save": "Save project...",
+        "menuitem.restore_backup": "Restore backup...",
+        "menuitem.file_assoc": "Associate .FLLingo...",
         "status.loaded_source": "Loaded source install: {path}",
         "status.loaded_compare": "Loaded target comparison: {path}",
+        "status.project_saved": "Project saved: {path}",
+        "status.project_loaded": "Project loaded: {path}",
+        "status.project_new": "Started a new project.",
         "status.settings_applied": "Settings applied.",
         "status.language_changed": "Language changed.",
         "status.toolchain_started": "Toolchain installer started.",
@@ -234,16 +283,33 @@ STRINGS = {
         "error.import_failed": "Import failed:\n{error}",
         "error.apply_failed": "Applying translations failed:\n{error}",
         "error.toolchain_start_failed": "Toolchain installer could not be started:\n{error}",
+        "error.project_save_failed": "Project could not be saved:\n{error}",
+        "error.project_load_failed": "Project could not be loaded:\n{error}",
+        "error.file_assoc_failed": "File association could not be configured:\n{error}",
         "dialog.export_visible": "Export visible dataset",
         "dialog.export_auto": "Export auto-target dataset",
+        "dialog.project_save": "Save project",
+        "dialog.project_load": "Load project",
+        "dialog.file_assoc": "Associate .FLLingo",
+        "dialog.file_assoc_done": "File association configured.\n\n{path}",
+        "dialog.unsaved_title": "Unsaved changes",
+        "dialog.unsaved_message": "There are unsaved changes in the current project.\n\nSave before continuing?",
         "dialog.apply_title": "Apply translations",
         "dialog.apply_confirm": "{count} entries will be replaced. A backup is created first.\n\nContinue?",
+        "dialog.apply_preview": "Apply preview",
+        "dialog.restore_backup": "Restore backup",
+        "dialog.restore_confirm": "Restore this backup and overwrite current DLLs?\n\n{path}",
         "dialog.apply_success": "Translations finished.\n\nReplaced entries: {count}\nWritten DLLs: {dlls}\nBackup: {backup}",
+        "dialog.restore_success": "Backup restored.\n\nDLLs: {count}\nSource: {path}",
         "dialog.toolchain_title": "Install toolchain",
         "dialog.toolchain_started": "Installer started:\n{path}",
         "status.manual_saved": "Manual translation saved.",
         "status.manual_reset": "Manual translation reset.",
+        "status.backup_restored": "Backup restored: {path}",
+        "status.file_assoc_done": ".FLLingo associated.",
         "error.select_entry": "Select an entry first.",
+        "error.no_backups": "No backups found for this install.",
+        "error.restore_failed": "Backup could not be restored:\n{error}",
         "summary.visible": "Visible {visible}/{total}",
         "summary.full": "DLL full replace {count}",
         "summary.patch": "DLL partial {count}",
@@ -255,6 +321,10 @@ STRINGS = {
         "detail.reference": "Target reference",
         "detail.manual": "Manual",
         "detail.changed": "Changed",
+        "status.auto_relocalize": "Auto transferable",
+        "status.already_localized": "Already in target language",
+        "status.manual_translation": "Manually translated",
+        "status.mod_only": "Mod-only content",
         "yes": "yes",
         "no": "no",
     },
@@ -309,7 +379,39 @@ class TranslatorMainWindow(QMainWindow):
         self._paired_catalog: ResourceCatalog | None = None
         self._dll_plans: list[DllRelocalizationPlan] = []
         self._visible_units: list[TranslationUnit] = []
+        self._project_path: Path | None = None
+        self._saved_project_signature: str | None = None
         self._setup_ui()
+        startup_project = getattr(self._config, "startup_project_path", None)
+        if startup_project:
+            self._load_project_path(Path(str(startup_project)))
+
+    def _resolve_app_icon(self) -> QIcon | None:
+        candidates: list[Path] = []
+        if getattr(sys, "frozen", False):
+            exe_dir = Path(sys.executable).resolve().parent
+            candidates.extend(
+                [
+                    exe_dir / "images" / "FLLingo-JuniIcon-Clean.png",
+                    exe_dir / "_internal" / "images" / "FLLingo-JuniIcon-Clean.png",
+                    exe_dir / "images" / "FLLingo-JuniIcon-Clean.ico",
+                    exe_dir / "_internal" / "images" / "FLLingo-JuniIcon-Clean.ico",
+                ]
+            )
+        project_root = Path(__file__).resolve().parent.parent.parent
+        candidates.extend(
+            [
+                project_root / "images" / "FLLingo-JuniIcon-Clean.png",
+                project_root / "images" / "FLLingo-JuniIcon-Clean.ico",
+                project_root / "images" / "FLLingo-JuniIcon.png",
+                project_root / "images" / "FLLingo-Icon.png",
+                project_root / "images" / "FLLingo-Icon.ico",
+            ]
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return QIcon(str(candidate))
+        return None
 
     def _tr(self, key: str) -> str:
         return STRINGS.get(self._lang, STRINGS["de"]).get(key, key)
@@ -319,7 +421,7 @@ class TranslatorMainWindow(QMainWindow):
         return normalized or fallback
 
     def _status_text(self, status: RelocalizationStatus) -> str:
-        return str(status)
+        return self._tr(f"status.{status}")
 
     def _dll_strategy_label(self, strategy: DllStrategy) -> str:
         if strategy == DllStrategy.FULL_REPLACE_SAFE:
@@ -327,6 +429,22 @@ class TranslatorMainWindow(QMainWindow):
         if strategy == DllStrategy.PATCH_REQUIRED:
             return self._tr("plan.strategy.patch")
         return self._tr("plan.strategy.unsafe")
+
+    def _populate_status_filter(self) -> None:
+        current_data = self.status_combo.currentData()
+        self.status_combo.blockSignals(True)
+        self.status_combo.clear()
+        self.status_combo.addItem(self._tr("kind.all"), None)
+        for status in (
+            RelocalizationStatus.AUTO_RELOCALIZE,
+            RelocalizationStatus.ALREADY_LOCALIZED,
+            RelocalizationStatus.MANUAL_TRANSLATION,
+            RelocalizationStatus.MOD_ONLY,
+        ):
+            self.status_combo.addItem(self._status_text(status), str(status))
+        index = self.status_combo.findData(current_data)
+        self.status_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.status_combo.blockSignals(False)
 
     def _load_persistent_settings(self) -> None:
         saved_language = str(self._settings.value("ui/language", self._lang) or self._lang).lower()
@@ -354,6 +472,12 @@ class TranslatorMainWindow(QMainWindow):
 
     def _setup_ui(self) -> None:
         self.setWindowTitle(f"{self._config.app_title} v{self._config.app_version}")
+        icon = self._resolve_app_icon()
+        if icon is not None:
+            self.setWindowIcon(icon)
+            app = QApplication.instance()
+            if app is not None:
+                app.setWindowIcon(icon)
         self.resize(1440, 900)
         self._apply_theme()
         self._setup_menu_bar()
@@ -363,6 +487,7 @@ class TranslatorMainWindow(QMainWindow):
         layout = QVBoxLayout(root)
 
         layout.addWidget(self._build_paths_group())
+        layout.addWidget(self._build_project_status_group())
         layout.addWidget(self._build_filters_group())
         layout.addWidget(self._build_dll_plan_group())
         layout.addWidget(self._build_main_splitter(), 1)
@@ -388,6 +513,28 @@ class TranslatorMainWindow(QMainWindow):
         act_compare = QAction(self._tr("btn.compare"), self)
         act_compare.triggered.connect(self._load_compare_catalog)
         file_menu.addAction(act_compare)
+
+        file_menu.addSeparator()
+
+        act_project_load = QAction(self._tr("menuitem.project_load"), self)
+        act_project_load.triggered.connect(self._load_project_file)
+        file_menu.addAction(act_project_load)
+
+        act_project_new = QAction(self._tr("menuitem.project_new"), self)
+        act_project_new.triggered.connect(self._new_project_file)
+        file_menu.addAction(act_project_new)
+
+        act_project_save = QAction(self._tr("menuitem.project_save"), self)
+        act_project_save.triggered.connect(self._save_project_file)
+        file_menu.addAction(act_project_save)
+
+        act_restore_backup = QAction(self._tr("menuitem.restore_backup"), self)
+        act_restore_backup.triggered.connect(self._restore_backup)
+        file_menu.addAction(act_restore_backup)
+
+        act_file_assoc = QAction(self._tr("menuitem.file_assoc"), self)
+        act_file_assoc.triggered.connect(self._install_file_association)
+        file_menu.addAction(act_file_assoc)
 
         act_export_visible = QAction(self._tr("btn.export_visible"), self)
         act_export_visible.triggered.connect(self._export_visible_json)
@@ -545,6 +692,15 @@ class TranslatorMainWindow(QMainWindow):
         self._refresh_footer()
         return footer
 
+    def _build_project_status_group(self) -> QGroupBox:
+        self.project_group = QGroupBox(self._tr("group.project"))
+        layout = QVBoxLayout(self.project_group)
+        self.project_status_label = QLabel("")
+        self.project_status_label.setWordWrap(True)
+        layout.addWidget(self.project_status_label)
+        self._refresh_project_status()
+        return self.project_group
+
     def _build_filters_group(self) -> QGroupBox:
         self.filters_group = QGroupBox(self._tr("group.filters"))
         row = QHBoxLayout(self.filters_group)
@@ -558,7 +714,7 @@ class TranslatorMainWindow(QMainWindow):
         self.dll_combo.currentIndexChanged.connect(self._refresh_table)
 
         self.status_combo = QComboBox()
-        self.status_combo.addItems([self._tr("kind.all"), "auto_relocalize", "already_localized", "manual_translation", "mod_only"])
+        self._populate_status_filter()
         self.status_combo.currentIndexChanged.connect(self._refresh_table)
 
         self.target_only_check = QCheckBox(self._tr("check.target_only"))
@@ -698,6 +854,7 @@ class TranslatorMainWindow(QMainWindow):
         self._paired_catalog = None
         self._target_catalog = None
         self._dll_plans = []
+        self._saved_project_signature = None
         self._refresh_dll_plan_table()
         self._populate_dll_filter(self._source_catalog)
         self._refresh_table()
@@ -733,6 +890,7 @@ class TranslatorMainWindow(QMainWindow):
         self._refresh_dll_plan_table()
         self._populate_dll_filter(self._paired_catalog)
         self._refresh_table()
+        self._saved_project_signature = None
         self._set_status(self._tr("status.loaded_compare").format(path=target_dir))
 
     def _current_catalog(self) -> ResourceCatalog | None:
@@ -759,6 +917,52 @@ class TranslatorMainWindow(QMainWindow):
                 self.table.selectRow(row)
                 return
 
+    def _current_project(self) -> TranslatorProject:
+        return TranslatorProject(
+            source_install_dir=self.source_edit.text().strip(),
+            target_install_dir=self.target_edit.text().strip(),
+            include_infocards=self.include_infocards_check.isChecked(),
+            source_language=self._source_lang_code,
+            target_language=self._target_lang_code,
+            source_catalog=self._source_catalog,
+            target_catalog=self._target_catalog,
+            paired_catalog=self._paired_catalog,
+            dll_plans=tuple(self._dll_plans),
+        )
+
+    def _reset_session_state(self) -> None:
+        self._project_path = None
+        self._saved_project_signature = None
+        self._source_catalog = None
+        self._target_catalog = None
+        self._paired_catalog = None
+        self._dll_plans = []
+        self._visible_units = []
+        self.include_infocards_check.setChecked(True)
+        self._populate_dll_filter(None)
+        self._refresh_dll_plan_table()
+        self._refresh_table()
+        self._refresh_footer()
+
+    def _manual_entry_count(self) -> int:
+        catalog = self._current_catalog()
+        if catalog is None:
+            return 0
+        return sum(1 for unit in catalog.units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION)
+
+    def _current_project_signature(self) -> str | None:
+        if self._current_catalog() is None:
+            return None
+        return project_signature(self._current_project())
+
+    def _is_project_dirty(self) -> bool:
+        current_signature = self._current_project_signature()
+        if current_signature is None:
+            return False
+        if self._saved_project_signature is None:
+            return True
+        return current_signature != self._saved_project_signature
+
     def _populate_dll_filter(self, catalog: ResourceCatalog | None) -> None:
         current_text = self.dll_combo.currentText()
         self.dll_combo.blockSignals(True)
@@ -780,6 +984,7 @@ class TranslatorMainWindow(QMainWindow):
             self.source_preview.clear()
             self.target_preview.clear()
             self.detail_label.setText(self._tr("detail.none"))
+            self._refresh_project_status()
             return
 
         units = list(catalog.units)
@@ -787,8 +992,8 @@ class TranslatorMainWindow(QMainWindow):
             units = [unit for unit in units if unit.kind == ResourceKind(self.kind_combo.currentText())]
         if self.dll_combo.currentText() != self._tr("kind.all"):
             units = [unit for unit in units if unit.source.dll_name == self.dll_combo.currentText()]
-        if self.status_combo.currentText() != self._tr("kind.all"):
-            units = [unit for unit in units if unit.status == RelocalizationStatus(self.status_combo.currentText())]
+        if self.status_combo.currentData() is not None:
+            units = [unit for unit in units if unit.status == RelocalizationStatus(str(self.status_combo.currentData()))]
         if self.target_only_check.isChecked():
             units = [unit for unit in units if unit.target is not None]
         if self.changed_only_check.isChecked():
@@ -821,6 +1026,7 @@ class TranslatorMainWindow(QMainWindow):
             self.source_preview.clear()
             self.target_preview.clear()
             self.detail_label.setText(self._tr("detail.none"))
+        self._refresh_project_status()
 
     def _refresh_dll_plan_table(self) -> None:
         self.dll_plan_table.setRowCount(len(self._dll_plans))
@@ -954,6 +1160,183 @@ class TranslatorMainWindow(QMainWindow):
         else:
             self._set_status(f"{len(self._visible_units)} Eintraege exportiert: {output_path}")
 
+    def _save_project_file(self) -> bool:
+        if self._current_catalog() is None:
+            self._show_error(self._tr("error.load_first"))
+            return False
+        self._store_language_pair()
+        default_path = self._project_path or (Path.cwd() / "build" / f"translator-project{PROJECT_FILE_EXTENSION}")
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            self._tr("dialog.project_save"),
+            str(default_path),
+            f"FL Lingo Project (*{PROJECT_FILE_EXTENSION})",
+        )
+        if not output_path:
+            return False
+        output_path = self._ensure_project_extension(output_path)
+        try:
+            save_project(self._current_project(), Path(output_path))
+        except Exception as exc:
+            self._show_error(self._tr("error.project_save_failed").format(error=exc))
+            return False
+        self._project_path = Path(output_path)
+        self._saved_project_signature = self._current_project_signature()
+        self._set_status(self._tr("status.project_saved").format(path=output_path))
+        self._refresh_project_status()
+        return True
+
+    def _load_project_file(self) -> None:
+        if not self._confirm_unsaved_changes():
+            return
+        input_path, _ = QFileDialog.getOpenFileName(
+            self,
+            self._tr("dialog.project_load"),
+            str(self._project_path.parent if self._project_path is not None else (Path.cwd() / "build")),
+            f"FL Lingo Project (*{PROJECT_FILE_EXTENSION})",
+        )
+        if not input_path:
+            return
+        self._load_project_path(Path(input_path))
+
+    def _new_project_file(self) -> None:
+        if not self._confirm_unsaved_changes():
+            return
+        self._reset_session_state()
+        self._set_status(self._tr("status.project_new"))
+
+    def _ensure_project_extension(self, output_path: str) -> str:
+        path = str(output_path or "").strip()
+        if not path:
+            return path
+        if path.lower().endswith(PROJECT_FILE_EXTENSION.lower()):
+            return path
+        return f"{path}{PROJECT_FILE_EXTENSION}"
+
+    def _load_project_path(self, input_path: Path) -> None:
+        try:
+            project = load_project(Path(input_path))
+        except Exception as exc:
+            self._show_error(self._tr("error.project_load_failed").format(error=exc))
+            return
+
+        self._project_path = Path(input_path)
+        self.source_edit.setText(project.source_install_dir)
+        self.target_edit.setText(project.target_install_dir)
+        self.include_infocards_check.setChecked(project.include_infocards)
+        self._source_lang_code = self._normalize_lang_code(project.source_language, self._source_lang_code)
+        self._target_lang_code = self._normalize_lang_code(project.target_language, self._target_lang_code)
+        self.source_lang_edit.setText(self._source_lang_code)
+        self.target_lang_edit.setText(self._target_lang_code)
+        self._source_catalog = project.source_catalog
+        self._target_catalog = project.target_catalog
+        self._paired_catalog = project.paired_catalog
+        self._dll_plans = list(project.dll_plans)
+        self._saved_project_signature = project_signature(project)
+        self._populate_dll_filter(self._current_catalog())
+        self._refresh_dll_plan_table()
+        self._refresh_table()
+        self._refresh_footer()
+        self._save_persistent_settings()
+        self._set_status(self._tr("status.project_loaded").format(path=input_path))
+        self._refresh_project_status()
+
+    def _build_apply_preview(self, units: list[TranslationUnit]) -> str:
+        by_dll: dict[str, dict[str, int | str]] = {}
+        plan_by_name = {plan.dll_name: plan for plan in self._dll_plans}
+        for unit in units:
+            bucket = by_dll.setdefault(
+                unit.source.dll_name,
+                {"units": 0, "strings": 0, "infocards": 0, "action": self._tr("plan.action.patch")},
+            )
+            bucket["units"] = int(bucket["units"]) + 1
+            if unit.kind == ResourceKind.STRING:
+                bucket["strings"] = int(bucket["strings"]) + 1
+            else:
+                bucket["infocards"] = int(bucket["infocards"]) + 1
+            plan = plan_by_name.get(unit.source.dll_name)
+            if plan is not None:
+                if plan.strategy == DllStrategy.FULL_REPLACE_SAFE:
+                    bucket["action"] = self._tr("plan.action.full")
+                elif plan.strategy == DllStrategy.NOT_SAFE:
+                    bucket["action"] = self._tr("plan.action.unsafe")
+        lines = []
+        for dll_name in sorted(by_dll):
+            bucket = by_dll[dll_name]
+            lines.append(
+                f"{dll_name}: {bucket['action']} | units={bucket['units']} | strings={bucket['strings']} | infocards={bucket['infocards']}"
+            )
+        return "\n".join(lines)
+
+    def _restore_backup(self) -> None:
+        install_dir = Path(self.source_edit.text().strip())
+        if not install_dir.exists():
+            self._show_error(self._tr("error.source_missing").format(path=install_dir))
+            return
+        backups = self._writer.list_backups(install_dir)
+        if not backups:
+            self._show_error(self._tr("error.no_backups"))
+            return
+        selected_dir = QFileDialog.getExistingDirectory(
+            self,
+            self._tr("dialog.restore_backup"),
+            str(backups[0]),
+        )
+        if not selected_dir:
+            return
+        backup_dir = Path(selected_dir)
+        reply = QMessageBox.question(
+            self,
+            self._tr("dialog.restore_backup"),
+            self._tr("dialog.restore_confirm").format(path=backup_dir),
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            restored = self._writer.restore_backup(install_dir, backup_dir)
+        except Exception as exc:
+            self._show_error(self._tr("error.restore_failed").format(error=exc))
+            return
+        QMessageBox.information(
+            self,
+            self._tr("dialog.restore_backup"),
+            self._tr("dialog.restore_success").format(count=len(restored), path=backup_dir),
+        )
+        self._set_status(self._tr("status.backup_restored").format(path=backup_dir))
+        if self._source_catalog is not None:
+            self._load_source_catalog()
+            if self._target_catalog is not None:
+                self._load_compare_catalog()
+
+    def _install_file_association(self) -> None:
+        try:
+            script_path = self._writer.install_file_association()
+        except Exception as exc:
+            self._show_error(self._tr("error.file_assoc_failed").format(error=exc))
+            return
+        QMessageBox.information(
+            self,
+            self._tr("dialog.file_assoc"),
+            self._tr("dialog.file_assoc_done").format(path=script_path),
+        )
+        self._set_status(self._tr("status.file_assoc_done"))
+
+    def _confirm_unsaved_changes(self) -> bool:
+        if not self._is_project_dirty():
+            return True
+        reply = QMessageBox.question(
+            self,
+            self._tr("dialog.unsaved_title"),
+            self._tr("dialog.unsaved_message"),
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save,
+        )
+        if reply == QMessageBox.Save:
+            return self._save_project_file()
+        if reply == QMessageBox.Discard:
+            return True
+        return False
+
     def _export_auto_json(self) -> None:
         catalog = self._current_catalog()
         if catalog is None:
@@ -1047,11 +1430,14 @@ class TranslatorMainWindow(QMainWindow):
         if not units:
             self._show_error(self._tr("error.no_apply_units"))
             return
-        reply = QMessageBox.question(
-            self,
-            self._tr("dialog.apply_title"),
-            self._tr("dialog.apply_confirm").format(count=len(units)),
-        )
+        preview_box = QMessageBox(self)
+        preview_box.setIcon(QMessageBox.Question)
+        preview_box.setWindowTitle(self._tr("dialog.apply_preview"))
+        preview_box.setText(self._tr("dialog.apply_confirm").format(count=len(units)))
+        preview_box.setDetailedText(self._build_apply_preview(units))
+        preview_box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
+        preview_box.setDefaultButton(QMessageBox.Yes)
+        reply = preview_box.exec()
         if reply != QMessageBox.Yes:
             return
         try:
@@ -1123,6 +1509,7 @@ class TranslatorMainWindow(QMainWindow):
         self._setup_menu_bar()
         self.setWindowTitle(f"{self._config.app_title} v{self._config.app_version}")
         self.paths_group.setTitle(self._tr("group.installs"))
+        self.project_group.setTitle(self._tr("group.project"))
         self.filters_group.setTitle(self._tr("group.filters"))
         self.dll_group.setTitle(self._tr("group.dll_analysis"))
         self.source_install_label.setText(self._tr("label.source_install"))
@@ -1157,12 +1544,24 @@ class TranslatorMainWindow(QMainWindow):
         self._refresh_dll_plan_table()
         self._refresh_table()
         self._refresh_toolchain_label()
+        self._refresh_project_status()
         self._refresh_footer()
         self._set_status(self._tr("status.start"))
 
     def _refresh_footer(self) -> None:
         self.footer_label.setText(
             f"{self._config.developed_by} | Version {self._config.app_version} | UI: {self._lang} | Theme: {self._theme} | Translation: {self._source_lang_code} -> {self._target_lang_code}"
+        )
+
+    def _refresh_project_status(self) -> None:
+        project_name = self._project_path.name if self._project_path is not None else self._tr("project.none")
+        self.project_status_label.setText(
+            self._tr("project.info").format(
+                name=project_name,
+                dirty=self._tr("project.unsaved") if self._is_project_dirty() else self._tr("project.saved"),
+                manual=self._manual_entry_count(),
+                visible=len(self._visible_units),
+            )
         )
 
     def _refresh_toolchain_label(self) -> None:
@@ -1172,7 +1571,7 @@ class TranslatorMainWindow(QMainWindow):
     def _retitle_combo_items(self) -> None:
         self.kind_combo.setItemText(0, self._tr("kind.all"))
         self.dll_combo.setItemText(0, self._tr("kind.all"))
-        self.status_combo.setItemText(0, self._tr("kind.all"))
+        self._populate_status_filter()
 
     def _update_units_header(self) -> None:
         self.table.setHorizontalHeaderLabels(
@@ -1218,6 +1617,12 @@ class TranslatorMainWindow(QMainWindow):
 
     def _set_status(self, message: str) -> None:
         self.status_bar.showMessage(message, 10000)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._confirm_unsaved_changes():
+            event.accept()
+            return
+        event.ignore()
 
 
 class _DefaultConfig:

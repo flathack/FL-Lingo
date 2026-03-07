@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_VERSION = "0.1.0"
 DEVELOPED_BY = "Developed by Aldenmar Odin - flathack"
-APP_TITLE = "FLAtlas Translator"
+APP_TITLE = "FL Lingo"
 DEFAULT_LANGUAGE = "de"
 DEFAULT_THEME = "light"
 DEFAULT_SOURCE_LANGUAGE = "en"
@@ -23,6 +23,7 @@ class LaunchConfig:
     default_theme: str = DEFAULT_THEME
     default_source_language: str = DEFAULT_SOURCE_LANGUAGE
     default_target_language: str = DEFAULT_TARGET_LANGUAGE
+    startup_project_path: str | None = None
 
 
 def main() -> int:
@@ -33,7 +34,12 @@ def main() -> int:
 
     from flatlas_translator.gui_main import main as gui_main
 
-    return gui_main(LaunchConfig())
+    startup_project_path = None
+    if len(sys.argv) > 1:
+        candidate = Path(sys.argv[1]).expanduser()
+        startup_project_path = str(candidate)
+
+    return gui_main(LaunchConfig(startup_project_path=startup_project_path))
 
 
 if __name__ == "__main__":

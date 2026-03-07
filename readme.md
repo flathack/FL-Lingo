@@ -1,191 +1,252 @@
-# FLAtlas Translator
+# FL Lingo
 
-## Overview
-FLAtlas Translator is a translation tool for Microsoft Freelancer (2003). The goal of the project is to read the language resources used by Freelancer, extract translatable content from the referenced `.dll` files, and write translated versions back either into a Freelancer installation or into a mod-compatible output.
+FL Lingo is a relocalization tool for Freelancer mods.
 
-Freelancer stores relevant resource `.dll` files in the `EXE` directory. These files are referenced through `Freelancer.ini` via the `resources` entries. Those `.dll` files contain the strings and infocards that need to be translated.
+It is built for the common case where a mod changes a localized Freelancer install back to English. FL Lingo compares a modded game install with a reference install, restores known vanilla text automatically, exports new mod-only text for external translation, imports translated results, and writes localized strings and infocards back into the game.
 
-## Project Goal
-The tool should make it possible to:
+## What FL Lingo Does
 
-- load an English Freelancer installation as the source
-- choose a target language or an existing target-language Freelancer installation as reference
-- extract strings and infocards from the relevant resource `.dll` files
-- preview and validate the translation result before writing files
-- create backups before changing original game files
-- save translated output either directly into Freelancer or as a mod/package
+- compares a current game install against a reference install
+- detects strings and infocards from Freelancer resource DLLs
+- restores known vanilla text automatically where a safe match exists
+- exports unknown mod-only entries for external translation
+- imports translated exchange files back into the project
+- supports manual edits for individual entries
+- applies translations back into the game with automatic backups
+- analyzes each DLL and chooses the safest write strategy
 
-## Scope For V1
-Version 1 should stay focused on the core workflow:
+## Main Use Case
 
-- source language: English Freelancer installation
-- target: one selected target language or one selected target-language installation
-- platform focus: Windows first
-- input source: `Freelancer.ini` and referenced resource `.dll` files
-- output: translated `.dll` files with backup support
-- UI: basic desktop interface for selecting source, target, categories, preview, and export
+Example:
 
-Linux support can be considered later, but it should not be treated as a guaranteed V1 target unless the `.dll` handling workflow is confirmed to work reliably there.
+- current game: Freelancer with an English mod installed
+- reference install: clean German Freelancer install
 
-## Planned Features
-- Automatic detection of relevant resource `.dll` files from `Freelancer.ini`
-- Extraction of translatable strings and infocards
-- Category-based navigation for translation content
-- Preview of source and target text before export
-- Translation statistics and progress display
-- Backup of original files before writing changes
-- Export directly into a Freelancer installation or as a mod-friendly output
-- Validation to reduce broken references or invalid resource writes
+FL Lingo will then:
 
-## User Workflow
-1. The program starts and opens the main interface.
-2. The user selects the English Freelancer installation.
-3. The user selects a target language or a target-language Freelancer installation.
-4. The tool reads `Freelancer.ini` and loads the referenced resource `.dll` files.
-5. The user navigates through translation categories such as system objects, equipment, infocards, and HUD or menu texts.
-6. The tool shows a preview of the extracted content and translation statistics.
-7. The original files are backed up automatically.
-8. The translation output is generated.
-9. The result is written either into the selected Freelancer installation or exported as a mod/package.
-10. A progress bar and status messages show the current operation state.
+1. detect texts that can be restored automatically from the German reference
+2. identify mod-only entries that have no German equivalent
+3. export those entries for external translation
+4. import the translated result
+5. write the localized result back into the modded game install
 
-## Application Layout
-- Left side: sidebar with navigation buttons
-- Right side: translation workspace with tabs for categories such as system objects, equipment, infocards, and Freelancer HUD or menu texts
-- Top: standard menu bar with application actions
-- Help menu: Help, Check for Updates, About
-- Footer: Developed by Aldenmar Odin - flathack - Version 0.1.0 - Discord link - GitHub link
+## Current Features
 
-## Technical Direction
-- Language: Python
-- Primary platform: Windows
-- Source data: Freelancer installation, `Freelancer.ini`, resource `.dll` files
-- Core requirement: reliable read and write support for Freelancer resource `.dll` files
-- Packaging: `pyproject.toml` with `src` layout
-- First executable interface: CLI for validating install detection and DLL extraction
-- Planned UI layer: desktop app on top of the tested core modules
+- desktop application for Windows
+- source and target language selection
+- compare current install and reference install
+- DLL-level safety analysis
+- main workflow for export, import, preview, and apply
+- separate editor tab for manual corrections
+- progress display for translated and skipped entries
+- terminology files per target language
+- project save and load via `.FLLingo`
+- automatic backup creation before write operations
+- backup restore from the app
+- update check via GitHub Releases
+- UI languages:
+  - English
+  - German
+  - French
+  - Spanish
+  - Russian
+- themes:
+  - light
+  - dark
+  - high contrast
 
-## Current Repository Structure
-- `pyproject.toml`: project metadata and dependencies
-- `src/flatlas_translator/freelancer_ini.py`: Freelancer installation and resource DLL discovery
-- `src/flatlas_translator/dll_resources.py`: string table extraction from resource DLLs
-- `src/flatlas_translator/models.py`: translation unit data model
-- `src/flatlas_translator/catalog.py`: catalog loading and source-target pairing
-- `src/flatlas_translator/exporters.py`: export translation datasets as JSON
-- `src/flatlas_translator/cli.py`: CLI entry point for early validation
-- `src/flatlas_translator/stats.py`: summary metrics for matched and changed entries
-- `src/flatlas_translator/ui_app.py`: desktop app for loading, comparing, filtering, and exporting units
-- `src/flatlas_translator/gui_main.py`: GUI entry point
-- `scripts/build_windows.ps1`: Windows build script for PyInstaller
-- `run_translator.bat`: local launcher for the desktop app
-- `src/flatlas_translator/ui_app.py`: future UI entry point placeholder
-- `tests/`: initial parser tests
+## Supported Data
 
-## Local Setup
-Create a virtual environment and install the project in editable mode:
+FL Lingo currently works with the Freelancer resource DLL workflow, including:
+
+- string tables
+- infocards / HTML resources
+- DLL references from `EXE\freelancer.ini`
+
+Typical relevant files include:
+
+- `InfoCards.dll`
+- `MiscText.dll`
+- `MiscTextInfo2.dll`
+- `NameResources.dll`
+- `EquipResources.dll`
+- `OfferBribeResources.dll`
+
+## Workflow
+
+### 1. Load the current game
+
+Select the Freelancer install that you actually want to translate.
+
+This is usually:
+
+- your modded game install
+- often English because the mod replaced localized text
+
+### 2. Load the reference install
+
+Select a clean install in the language you want to restore.
+
+This is usually:
+
+- a German vanilla Freelancer install
+
+### 3. Compare
+
+FL Lingo pairs entries by DLL and resource ID and classifies them into:
+
+- automatically transferable
+- already localized
+- manually translated
+- mod-only content
+
+### 4. Export mod-only entries
+
+If the mod added new text that does not exist in the reference install, export those entries and translate them externally.
+
+### 5. Import translated entries
+
+Import the translated exchange file back into FL Lingo.
+
+### 6. Apply translations
+
+FL Lingo creates a backup first, then:
+
+- fully replaces safe DLLs
+- patches only matching entries where necessary
+- keeps unsafe DLLs from being blindly overwritten
+
+## Terminology
+
+FL Lingo supports target-language terminology files.
+
+Current files:
+
+- `data/terminology.de.json`
+- `data/terminology.en.json`
+
+The app uses terminology for:
+
+- glossary export
+- known term replacement
+- mod-only translation suggestions
+- consistent faction and role naming
+
+The active terminology file depends on the selected target language.
+
+## Project Files
+
+FL Lingo can save and load full working sessions as:
+
+- `.FLLingo`
+
+A project file stores:
+
+- selected install paths
+- selected language pair
+- include-infocards option
+- paired catalog state
+- manual translations
+- DLL analysis state
+
+## Safety
+
+FL Lingo modifies Freelancer resource DLLs.
+
+Before applying translations it creates a backup automatically.
+
+You can also restore previous backups from inside the application.
+
+Still recommended:
+
+- test on a copy of the game first
+- keep a clean reference install untouched
+- verify results on real mods before using it on your main install
+
+## Installation
+
+### Option 1: Run from source
+
+Requirements:
+
+- Python 3.11+
+- Windows
+
+Setup:
 
 ```powershell
 py -3.11 -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install -e .[dev]
-```
-
-If UI work starts, install the optional UI dependency set:
-
-```powershell
 python -m pip install -e .[dev,ui]
 ```
 
-For the current test app in this repository, the local `.venv` already needs `PySide6` and `pyinstaller`.
-
-## CLI Prototype
-The repository now includes a small validation CLI:
+Run:
 
 ```powershell
-flatlas-translator "C:\Path\To\Freelancer" --dump
+python launch.py
 ```
 
-This command currently verifies:
+### Option 2: Windows executable
 
-- `freelancer.ini` detection
-- parsing of `[Resources]` DLL entries
-- resolution of resource DLL file paths
-- extraction of string table entries from discovered DLLs
-- creation of translation units with stable IDs and DLL metadata
-- optional JSON export for later UI or translation workflow usage
+If you use a packaged release, launch the included `FL-Lingo.exe`.
 
-Optional flags:
+## Development
 
-- `--include-infocards`: also reads `RT_HTML` entries used for infocards
-- `--compare-dir <path>`: compares discovered DLL entry counts against a second Freelancer installation
-- `--paired-only`: when comparing, only prints DLLs with at least one matched target entry
-- `--export-json <path>`: exports the loaded catalog or paired compare catalog as JSON
-- `--changed-only`: when exporting a paired catalog, only keeps entries whose target text differs from source
+Project layout:
 
-## Desktop Test App
-The repository now also includes a first desktop test application.
+- `launch.py`: local launcher and central app defaults
+- `src/flatlas_translator/ui_app.py`: main desktop UI
+- `src/flatlas_translator/catalog.py`: catalog loading and pairing
+- `src/flatlas_translator/dll_resources.py`: resource extraction from DLLs
+- `src/flatlas_translator/resource_writer.py`: write/apply logic
+- `src/flatlas_translator/terminology.py`: terminology and suggestion logic
+- `src/flatlas_translator/project_io.py`: `.FLLingo` project format
+- `Languages/`: UI translation files
+- `data/help/`: HTML help files
+- `data/`: terminology and other app data
+- `tests/`: automated tests
 
-Start it locally:
+Run tests:
 
 ```powershell
-.\run_translator.bat
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-Or directly:
+## Building
 
-```powershell
-.\.venv\Scripts\python.exe -m flatlas_translator.gui_main
-```
-
-Current desktop features:
-
-- load a source Freelancer installation
-- optionally load a target installation for comparison
-- filter by kind, DLL, matched state, changed state, and search text
-- inspect source and target text side by side
-- export the currently visible dataset as JSON
-
-## Windows Build
-Build the Windows test executable with:
+Build the Windows executable with:
 
 ```powershell
 .\scripts\build_windows.ps1
 ```
 
-Expected output:
+## Current Status
 
-- `dist\FLAtlas-Translator\FLAtlas-Translator.exe`
+FL Lingo is already usable as a desktop tool for:
 
-## Existing Resources
-Parts of the required functionality already exist in the FLAtlas 2D/3D Editor project:
+- comparing installs
+- restoring known localized content
+- exporting mod-only content
+- importing translated content
+- editing entries manually
+- applying translations back into the game
 
-- functions for reading `.dll` files
-- functions for writing `.dll` files
-- existing project knowledge about Freelancer file structure and resource handling
+The main area that still depends heavily on real-world testing is broader validation across different Freelancer mods and resource variations.
 
-Reference installations currently available:
+## Roadmap
 
-- German installation: `C:\Users\STAdmin\Downloads\_FL Fresh Install-deutsch`
-- English installation: `C:\Users\STAdmin\Downloads\_FL Fresh Install-englisch`
+- more real-world testing with large mods
+- improve terminology coverage for more languages
+- polish UI translations for French, Spanish, and Russian
+- expand conflict detection for difficult DLL cases
+- improve workflow guidance for first-time users
 
-These should be used to validate extraction, comparison, backup, and output workflows early.
+## Links
 
-## Open Questions
-- Which exact `.dll` files are required for a complete translation workflow?
-- Are normal strings and infocards stored in the same structure, or do they require separate handling?
-- Will V1 support manual translation only, or also import from existing translated installations?
-- What should the mod export format look like?
-- How should version differences between Freelancer installations be detected and handled?
-- What validation is required to prevent broken or incompatible output files?
+- GitHub: https://github.com/flathack/FL-Lingo
+- Discord: https://discord.com/invite/RENtMMcc
 
-## Development Priorities
-1. Reuse and isolate existing `.dll` read/write logic from FLAtlas.
-2. Verify the new CLI against the English and German reference installations.
-3. Expand the compare workflow from entry matching to editable translation datasets.
-4. Define the internal data model for translation entries.
-5. Implement backup, preview, validation, and export workflow.
-6. Build the desktop UI around the confirmed core logic.
+## Credits
 
-## Project Status
-This project is currently in planning and concept phase. The README defines the intended direction and the first realistic implementation scope for V1.
+Developed by Aldenmar Odin - flathack.

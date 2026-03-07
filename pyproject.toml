@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flatlas-translator"
+version = "0.1.0"
+description = "Freelancer resource DLL translation tooling."
+readme = "readme.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pefile>=2023.2.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9",
+]
+ui = [
+    "PySide6>=6.6",
+]
+
+[project.scripts]
+flatlas-translator = "flatlas_translator.cli:main"
+flatlas-translator-gui = "flatlas_translator.gui_main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

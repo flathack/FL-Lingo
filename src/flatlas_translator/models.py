@@ -1,0 +1,104 @@
+"""Core translation data models."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+
+
+class ResourceKind(StrEnum):
+    STRING = "string"
+    INFOCARD = "infocard"
+
+
+class RelocalizationStatus(StrEnum):
+    AUTO_RELOCALIZE = "auto_relocalize"
+    ALREADY_LOCALIZED = "already_localized"
+    MOD_ONLY = "mod_only"
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceLocation:
+    dll_name: str
+    dll_path: Path
+    local_id: int
+    slot: int
+    global_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class TranslationUnit:
+    kind: ResourceKind
+    source: ResourceLocation
+    source_text: str
+    target: ResourceLocation | None = None
+    target_text: str = ""
+
+    @property
+    def has_target(self) -> bool:
+        return self.target is not None and bool(self.target_text)
+
+    @property
+    def is_changed(self) -> bool:
+        return self.has_target and self.source_text != self.target_text
+
+    @property
+    def status(self) -> RelocalizationStatus:
+        if not self.has_target:
+            return RelocalizationStatus.MOD_ONLY
+        if self.source_text == self.target_text:
+            return RelocalizationStatus.ALREADY_LOCALIZED
+        return RelocalizationStatus.AUTO_RELOCALIZE
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "kind": str(self.kind),
+            "source": _location_to_dict(self.source),
+            "source_text": self.source_text,
+            "target": _location_to_dict(self.target),
+            "target_text": self.target_text,
+            "has_target": self.has_target,
+            "is_changed": self.is_changed,
+            "status": str(self.status),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceCatalog:
+    install_dir: Path
+    freelancer_ini: Path
+    units: tuple[TranslationUnit, ...]
+
+    def by_kind(self, kind: ResourceKind) -> list[TranslationUnit]:
+        return [unit for unit in self.units if unit.kind == kind]
+
+    def by_dll(self, dll_name: str) -> list[TranslationUnit]:
+        name = str(dll_name).lower()
+        return [unit for unit in self.units if unit.source.dll_name.lower() == name]
+
+    def by_status(self, status: RelocalizationStatus) -> list[TranslationUnit]:
+        return [unit for unit in self.units if unit.status == status]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "install_dir": self.install_dir.as_posix(),
+            "freelancer_ini": self.freelancer_ini.as_posix(),
+            "units": [unit.to_dict() for unit in self.units],
+        }
+
+
+def make_global_id(slot: int, local_id: int) -> int:
+    return ((int(slot) & 0xFFFF) << 16) | (int(local_id) & 0xFFFF)
+
+
+def _location_to_dict(location: ResourceLocation | None) -> dict[str, object] | None:
+    if location is None:
+        return None
+    return {
+        "dll_name": location.dll_name,
+        "dll_path": location.dll_path.as_posix(),
+        "local_id": location.local_id,
+        "slot": location.slot,
+        "global_id": location.global_id,
+    }

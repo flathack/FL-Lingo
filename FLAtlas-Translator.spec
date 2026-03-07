@@ -6,8 +6,8 @@ project_root = Path(SPECPATH)
 src_dir = project_root / "src"
 
 analysis = Analysis(
-    [str(src_dir / "flatlas_translator" / "gui_main.py")],
-    pathex=[str(src_dir)],
+    [str(project_root / "launch.py")],
+    pathex=[str(project_root), str(src_dir)],
     binaries=[],
     datas=[(str(project_root / "scripts" / "install_ids_toolchain_windows.cmd"), "scripts")],
     hiddenimports=[],

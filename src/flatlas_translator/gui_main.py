@@ -2,14 +2,27 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 try:
     from .ui_app import run
 except ImportError:
     from flatlas_translator.ui_app import run
 
 
-def main() -> int:
-    return run()
+@dataclass(frozen=True, slots=True)
+class AppConfig:
+    app_title: str = "FLAtlas Translator"
+    app_version: str = "0.1.0"
+    developed_by: str = "Developed by Aldenmar Odin - flathack"
+    default_language: str = "de"
+    default_theme: str = "light"
+    default_source_language: str = "en"
+    default_target_language: str = "de"
+
+
+def main(config: AppConfig | None = None) -> int:
+    return run(config or AppConfig())
 
 
 if __name__ == "__main__":

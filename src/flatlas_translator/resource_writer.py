@@ -46,7 +46,11 @@ class ResourceWriter:
         backup_root: Path | None = None,
     ) -> ApplyReport:
         selected_units = list(units if units is not None else catalog.units)
-        apply_units = [unit for unit in selected_units if unit.status == RelocalizationStatus.AUTO_RELOCALIZE]
+        apply_units = [
+            unit
+            for unit in selected_units
+            if unit.status in (RelocalizationStatus.AUTO_RELOCALIZE, RelocalizationStatus.MANUAL_TRANSLATION)
+        ]
         if not apply_units:
             raise RuntimeError("No auto_relocalize entries available to write.")
         if not self.has_toolchain():
@@ -59,10 +63,11 @@ class ResourceWriter:
         for unit in apply_units:
             dll_path = unit.source.dll_path
             bucket = by_dll.setdefault(dll_path, {"strings": {}, "infos": {}})
+            replacement_text = unit.replacement_text
             if unit.kind == ResourceKind.STRING:
-                bucket["strings"][unit.source.local_id] = unit.target_text
+                bucket["strings"][unit.source.local_id] = replacement_text
             else:
-                bucket["infos"][unit.source.local_id] = unit.target_text
+                bucket["infos"][unit.source.local_id] = replacement_text
 
         written_files: list[Path] = []
         plan_by_name = {plan.dll_name: plan for plan in list(dll_plans or [])}

@@ -15,6 +15,7 @@ class CatalogStats:
     auto_relocalize: int
     already_localized: int
     mod_only: int
+    manual_translation: int
 
 
 def summarize_catalog(catalog: ResourceCatalog, kind: ResourceKind | None = None) -> CatalogStats:
@@ -26,4 +27,5 @@ def summarize_catalog(catalog: ResourceCatalog, kind: ResourceKind | None = None
         auto_relocalize=sum(1 for unit in units if unit.status == RelocalizationStatus.AUTO_RELOCALIZE),
         already_localized=sum(1 for unit in units if unit.status == RelocalizationStatus.ALREADY_LOCALIZED),
         mod_only=sum(1 for unit in units if unit.status == RelocalizationStatus.MOD_ONLY),
+        manual_translation=sum(1 for unit in units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION),
     )

@@ -8,8 +8,8 @@ from pathlib import Path
 APP_VERSION = "0.1.0"
 DEVELOPED_BY = "Developed by Aldenmar Odin - flathack"
 APP_TITLE = "FL Lingo"
-DEFAULT_LANGUAGE = "de"
-DEFAULT_THEME = "light"
+DEFAULT_LANGUAGE = "en"
+DEFAULT_THEME = "dark"
 DEFAULT_SOURCE_LANGUAGE = "en"
 DEFAULT_TARGET_LANGUAGE = "de"
 

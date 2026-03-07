@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>FL Lingo Help</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 24px 28px 48px;
+      color: #1f1f1f;
+      background: #f5f4ef;
+      line-height: 1.55;
+    }
+    h1, h2, h3 {
+      color: #103c52;
+    }
+    h1 {
+      margin-top: 0;
+      border-bottom: 2px solid #d97841;
+      padding-bottom: 10px;
+    }
+    .note, .tip, .warn {
+      border-left: 4px solid #d97841;
+      background: #fff7ef;
+      padding: 12px 14px;
+      margin: 16px 0;
+    }
+    .tip {
+      border-left-color: #1f5c5c;
+      background: #eef7f7;
+    }
+    .warn {
+      border-left-color: #9d2f2f;
+      background: #fff1f1;
+    }
+    code {
+      background: #ece7df;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+    ul, ol {
+      padding-left: 22px;
+    }
+    a {
+      color: #0b5cab;
+    }
+  </style>
+</head>
+<body>
+  <h1>FL Lingo Help</h1>
+  <p>
+    FL Lingo is a relocalization tool for Freelancer mods. It compares your current game install with a reference install,
+    restores known vanilla text automatically, exports unknown mod text for external translation, imports the translated
+    result, and writes the selected changes back into the game DLLs.
+  </p>
+
+  <div class="note">
+    Main use case: your game with an English mod on the left, and a clean localized Freelancer install on the right.
+  </div>
+
+  <h2>Main workflow</h2>
+  <ol>
+    <li>Select <b>Game with mod / current game</b>.</li>
+    <li>Select the <b>Reference install / comparison game</b>.</li>
+    <li>Click <b>Compare with reference</b>.</li>
+    <li>Export <b>mod-only</b> entries if the mod contains new English text.</li>
+    <li>Translate the export externally.</li>
+    <li>Import the translated file back into FL Lingo.</li>
+    <li>Review the preview and click <b>Apply translations</b>.</li>
+  </ol>
+
+  <h2>What the statuses mean</h2>
+  <ul>
+    <li><b>Auto transferable</b>: FL Lingo found a matching text in the reference install and can apply it safely.</li>
+    <li><b>Already in target language</b>: source and reference already match.</li>
+    <li><b>Manually translated</b>: the entry contains a custom imported or edited translation.</li>
+    <li><b>Mod-only content</b>: the mod added a new entry with no target-language match in the reference install.</li>
+  </ul>
+
+  <h2>Editor tab</h2>
+  <p>
+    The Editor tab is the secondary workflow. It focuses on missing translations first, so you can work through open
+    entries quickly. Use it when you want to make manual corrections without exporting everything again.
+  </p>
+  <ul>
+    <li>The right text box is editable.</li>
+    <li><b>Save edit</b> stores a manual translation in the current project.</li>
+    <li><b>Reset manual edit</b> removes the manual override and falls back to the automatic/reference state.</li>
+  </ul>
+
+  <h2>Export and import</h2>
+  <p>
+    <b>Export mod-only</b> creates a JSON exchange file for entries that still need translation. This is the primary workflow
+    for new mod content.
+  </p>
+  <ul>
+    <li>You can send that file to an external translator or translate it yourself.</li>
+    <li>After editing, use <b>Import translation</b> to load the translated texts back into FL Lingo.</li>
+    <li>Known terminology from the active target-language terminology file is included and used for suggestions.</li>
+  </ul>
+
+  <h2>DLL analysis</h2>
+  <p>
+    The DLL Analysis tab shows the safest write strategy per DLL:
+  </p>
+  <ul>
+    <li><b>safe to replace with target DLL</b>: the full DLL can be copied from the reference install.</li>
+    <li><b>partially relocalizable only</b>: only matching entries will be patched.</li>
+    <li><b>not safe to replace</b>: FL Lingo keeps its hands off the full DLL and only applies safe entry-level changes.</li>
+  </ul>
+
+  <h2>Projects</h2>
+  <p>
+    Use <b>Save project</b> to store your current session as a <code>.FLLingo</code> file. This includes:
+  </p>
+  <ul>
+    <li>selected install paths</li>
+    <li>language pair</li>
+    <li>paired catalog state</li>
+    <li>manual translations</li>
+    <li>DLL analysis data</li>
+  </ul>
+
+  <h2>Backups and safety</h2>
+  <div class="warn">
+    FL Lingo modifies Freelancer resource DLLs. Always test against a copy of the game if you are unsure.
+  </div>
+  <ul>
+    <li>A backup is created automatically before translations are applied.</li>
+    <li>Use <b>Restore backup...</b> if you want to revert written DLLs.</li>
+    <li>If the required resource toolchain is missing, install it from the Settings menu first.</li>
+  </ul>
+
+  <h2>Terminology</h2>
+  <p>
+    FL Lingo uses one terminology file per target language. You can open it from <b>Settings - Open terminology...</b>.
+  </p>
+  <ul>
+    <li>Files live in <code>data/terminology.&lt;lang&gt;.json</code>.</li>
+    <li>Known faction and role names can be translated consistently from there.</li>
+    <li>The active terminology depends on the selected target language.</li>
+  </ul>
+
+  <h2>Languages and themes</h2>
+  <ul>
+    <li>Supported UI languages: English, German, French, Spanish, Russian.</li>
+    <li>Supported themes: light, dark, high contrast.</li>
+    <li>Language and theme are stored persistently.</li>
+  </ul>
+
+  <div class="tip">
+    GitHub: <a href="https://github.com/flathack/FL-Lingo">https://github.com/flathack/FL-Lingo</a><br>
+    Discord: <a href="https://discord.com/invite/RENtMMcc">https://discord.com/invite/RENtMMcc</a>
+  </div>
+</body>
+</html>

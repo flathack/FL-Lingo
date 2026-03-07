@@ -36,15 +36,26 @@ def test_export_mod_only_exchange_exports_only_mod_only_entries(tmp_path: Path) 
         freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
         units=(
             _unit("Custom text", local_id=5),
+            _unit("Planet Manhattan", local_id=7),
+            _unit("Bounty Hunters Guild", local_id=8),
+            _unit("Bounty Hunters Guild", target_text="Gilde der Kopfgeldjaeger", local_id=9, with_target=True),
+            _unit("Equipment Dealer", target_text="Ausruestungshaendler", local_id=10, with_target=True),
             _unit("German ref", target_text="Deutscher Text", local_id=6, with_target=True),
         ),
     )
 
-    output = export_mod_only_exchange(catalog, tmp_path / "exchange.json")
-    data = json.loads(output.read_text(encoding="utf-8"))
+    report = export_mod_only_exchange(catalog, tmp_path / "exchange.json")
+    data = json.loads(report.output_path.read_text(encoding="utf-8"))
 
-    assert len(data["entries"]) == 1
+    assert len(data["entries"]) == 2
     assert data["entries"][0]["source_text"] == "Custom text"
+    assert data["entries"][1]["source_text"] == "Bounty Hunters Guild"
+    assert data["entries"][1]["translation_text"] == "Gilde der Kopfgeldjaeger"
+    assert report.exported_entries == 2
+    assert report.skipped_entries == 1
+    assert data["metadata"]["skipped_entries"] == 1
+    assert data["glossary"][0]["source_term"] == "Bounty Hunters Guild"
+    assert data["glossary"][0]["target_term"] == "Gilde der Kopfgeldjaeger"
 
 
 def test_import_exchange_applies_manual_text_to_matching_units(tmp_path: Path) -> None:

@@ -1,20 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 
 project_root = Path(SPECPATH)
 src_dir = project_root / "src"
+data_files = collect_data_files("flatlas_translator", include_py_files=False)
+data_files.extend(
+    [
+        (str(project_root / "scripts" / "install_ids_toolchain_windows.cmd"), "scripts"),
+        (str(project_root / "scripts" / "install_fllingo_file_association.cmd"), "scripts"),
+        (str(project_root / "images" / "FLLingo-JuniIcon-Clean.png"), "images"),
+        (str(project_root / "images" / "FLLingo-JuniIcon-Clean.ico"), "images"),
+        (str(project_root / "data"), "data"),
+        (str(project_root / "Languages"), "Languages"),
+    ]
+)
 
 analysis = Analysis(
     [str(project_root / "launch.py")],
     pathex=[str(project_root), str(src_dir)],
     binaries=[],
-    datas=[
-        (str(project_root / "scripts" / "install_ids_toolchain_windows.cmd"), "scripts"),
-        (str(project_root / "scripts" / "install_fllingo_file_association.cmd"), "scripts"),
-        (str(project_root / "images" / "FLLingo-JuniIcon-Clean.png"), "images"),
-        (str(project_root / "images" / "FLLingo-JuniIcon-Clean.ico"), "images"),
-    ],
+    datas=data_files,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

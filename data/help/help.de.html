@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>FL Lingo Hilfe</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 24px 28px 48px;
+      color: #1f1f1f;
+      background: #f5f4ef;
+      line-height: 1.55;
+    }
+    h1, h2, h3 {
+      color: #103c52;
+    }
+    h1 {
+      margin-top: 0;
+      border-bottom: 2px solid #d97841;
+      padding-bottom: 10px;
+    }
+    .note, .tip, .warn {
+      border-left: 4px solid #d97841;
+      background: #fff7ef;
+      padding: 12px 14px;
+      margin: 16px 0;
+    }
+    .tip {
+      border-left-color: #1f5c5c;
+      background: #eef7f7;
+    }
+    .warn {
+      border-left-color: #9d2f2f;
+      background: #fff1f1;
+    }
+    code {
+      background: #ece7df;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+    ul, ol {
+      padding-left: 22px;
+    }
+    a {
+      color: #0b5cab;
+    }
+  </style>
+</head>
+<body>
+  <h1>FL Lingo Hilfe</h1>
+  <p>
+    FL Lingo ist ein Relocalization-Tool fuer Freelancer-Mods. Es vergleicht deine aktuelle Spielinstallation mit einer
+    Referenzinstallation, stellt bekannte Vanilla-Texte automatisch wieder her, exportiert unbekannte Mod-Texte fuer eine
+    externe Uebersetzung, importiert das Ergebnis wieder und schreibt die ausgewaehlten Aenderungen zurueck in die DLLs.
+  </p>
+
+  <div class="note">
+    Hauptfall: links dein Spiel mit englischem Mod, rechts eine saubere lokalisierte Freelancer-Installation.
+  </div>
+
+  <h2>Hauptworkflow</h2>
+  <ol>
+    <li><b>Spiel mit Mod / aktuelles Spiel</b> auswaehlen.</li>
+    <li><b>Referenzinstallation / Vergleichsspiel</b> auswaehlen.</li>
+    <li><b>Mit Referenz vergleichen</b> klicken.</li>
+    <li><b>Mod-only</b>-Eintraege exportieren, wenn der Mod neue englische Texte mitbringt.</li>
+    <li>Die Exportdatei extern uebersetzen.</li>
+    <li>Die uebersetzte Datei wieder in FL Lingo importieren.</li>
+    <li>Die Vorschau pruefen und <b>Uebersetzungen anwenden</b> klicken.</li>
+  </ol>
+
+  <h2>Bedeutung der Statuswerte</h2>
+  <ul>
+    <li><b>Automatisch uebernehmbar</b>: FL Lingo hat in der Referenzinstallation einen passenden Zieltext gefunden.</li>
+    <li><b>Bereits in Zielsprache</b>: Quelle und Referenz stimmen bereits ueberein.</li>
+    <li><b>Manuell uebersetzt</b>: der Eintrag enthaelt eine importierte oder direkt bearbeitete Uebersetzung.</li>
+    <li><b>Nur Mod-Inhalt</b>: der Mod bringt einen neuen Eintrag mit, fuer den es in der Referenz keinen Treffer gibt.</li>
+  </ul>
+
+  <h2>Editor-Tab</h2>
+  <p>
+    Der Editor-Tab ist der Nebenworkflow. Dort werden zuerst fehlende Uebersetzungen angezeigt, damit du offene Eintraege
+    schnell bearbeiten kannst. Er ist vor allem fuer manuelle Korrekturen gedacht.
+  </p>
+  <ul>
+    <li>Das rechte Textfeld ist editierbar.</li>
+    <li><b>Aenderung speichern</b> speichert eine manuelle Uebersetzung im aktuellen Projekt.</li>
+    <li><b>Manuelle Aenderung zuruecksetzen</b> entfernt den manuellen Override.</li>
+  </ul>
+
+  <h2>Export und Import</h2>
+  <p>
+    <b>Mod-only exportieren</b> erzeugt eine JSON-Austauschdatei fuer alle Eintraege, die noch uebersetzt werden muessen.
+    Das ist der wichtigste Workflow fuer neuen Mod-Inhalt.
+  </p>
+  <ul>
+    <li>Du kannst diese Datei extern uebersetzen lassen oder selbst bearbeiten.</li>
+    <li>Mit <b>Uebersetzung importieren</b> werden die Zieltexte wieder in FL Lingo uebernommen.</li>
+    <li>Bekannte Begriffe aus der aktiven Terminologie werden mitgeliefert und fuer Vorschlaege verwendet.</li>
+  </ul>
+
+  <h2>DLL-Analyse</h2>
+  <p>
+    Der Tab <b>DLL-Analyse</b> zeigt pro DLL die sicherste Schreibstrategie:
+  </p>
+  <ul>
+    <li><b>komplett durch Ziel-DLL ersetzbar</b>: die ganze DLL kann aus der Referenz kopiert werden.</li>
+    <li><b>nur teilweise rueckuebersetzbar</b>: nur passende Eintraege werden gepatcht.</li>
+    <li><b>nicht sicher ersetzbar</b>: FL Lingo ersetzt die komplette DLL nicht automatisch.</li>
+  </ul>
+
+  <h2>Projekte</h2>
+  <p>
+    Mit <b>Projekt speichern</b> speicherst du den aktuellen Stand als <code>.FLLingo</code>-Datei. Enthalten sind:
+  </p>
+  <ul>
+    <li>Installationspfade</li>
+    <li>Sprachpaar</li>
+    <li>geladener Vergleichszustand</li>
+    <li>manuelle Uebersetzungen</li>
+    <li>DLL-Analyse</li>
+  </ul>
+
+  <h2>Backups und Sicherheit</h2>
+  <div class="warn">
+    FL Lingo aendert Freelancer-Ressourcen-DLLs. Wenn du unsicher bist, teste zuerst mit einer Kopie des Spiels.
+  </div>
+  <ul>
+    <li>Vor dem Anwenden wird automatisch ein Backup erstellt.</li>
+    <li>Mit <b>Backup wiederherstellen...</b> kannst du geschriebene DLLs zuruecksetzen.</li>
+    <li>Falls die benoetigte Resource-Toolchain fehlt, installiere sie vorher ueber das Einstellungen-Menue.</li>
+  </ul>
+
+  <h2>Terminologie</h2>
+  <p>
+    FL Lingo verwendet eine Terminologie-Datei pro Zielsprache. Sie kann ueber <b>Einstellungen - Terminologie oeffnen...</b>
+    direkt bearbeitet werden.
+  </p>
+  <ul>
+    <li>Die Dateien liegen unter <code>data/terminology.&lt;lang&gt;.json</code>.</li>
+    <li>Bekannte Fraktions- und Rollenbezeichnungen koennen dort sauber gepflegt werden.</li>
+    <li>Welche Datei aktiv ist, haengt von der gewaehlten Zielsprache ab.</li>
+  </ul>
+
+  <h2>Sprachen und Themes</h2>
+  <ul>
+    <li>Unterstuetzte UI-Sprachen: Englisch, Deutsch, Franzoesisch, Spanisch, Russisch.</li>
+    <li>Unterstuetzte Themes: light, dark, high contrast.</li>
+    <li>Sprache und Theme werden dauerhaft gespeichert.</li>
+  </ul>
+
+  <div class="tip">
+    GitHub: <a href="https://github.com/flathack/FL-Lingo">https://github.com/flathack/FL-Lingo</a><br>
+    Discord: <a href="https://discord.com/invite/RENtMMcc">https://discord.com/invite/RENtMMcc</a>
+  </div>
+</body>
+</html>

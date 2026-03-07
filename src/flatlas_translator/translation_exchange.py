@@ -2,17 +2,40 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 
 from .models import RelocalizationStatus, ResourceCatalog, TranslationUnit
+from .terminology import build_term_map, extract_faction_glossary, is_unit_skippable, prefill_translation_text
 
 
-def export_mod_only_exchange(catalog: ResourceCatalog, output_path: Path) -> Path:
+@dataclass(frozen=True, slots=True)
+class ExchangeExportReport:
+    output_path: Path
+    exported_entries: int
+    skipped_entries: int
+    glossary_entries: int
+
+
+def export_mod_only_exchange(
+    catalog: ResourceCatalog,
+    output_path: Path,
+    *,
+    target_language: str = "de",
+) -> ExchangeExportReport:
     entries = []
+    mod_only_units: list[TranslationUnit] = []
+    skipped_entries = 0
+    term_map = build_term_map(catalog.units, target_language=target_language)
     for unit in catalog.units:
         if unit.status != RelocalizationStatus.MOD_ONLY:
             continue
+        mod_only_units.append(unit)
+        if is_unit_skippable(unit):
+            skipped_entries += 1
+            continue
+        suggested_text = prefill_translation_text(unit.source_text, term_map)
         entries.append(
             {
                 "kind": str(unit.kind),
@@ -20,17 +43,33 @@ def export_mod_only_exchange(catalog: ResourceCatalog, output_path: Path) -> Pat
                 "local_id": unit.source.local_id,
                 "global_id": unit.source.global_id,
                 "source_text": unit.source_text,
-                "translation_text": "",
+                "translation_text": suggested_text if suggested_text != unit.source_text else "",
+                "suggested_text": suggested_text if suggested_text != unit.source_text else "",
             }
         )
+    glossary = [
+        entry.to_dict()
+        for entry in extract_faction_glossary(mod_only_units, term_map, target_language=target_language)
+    ]
     payload = {
         "format": "flatlas-translator-exchange",
-        "version": 1,
+        "version": 2,
+        "metadata": {
+            "exported_entries": len(entries),
+            "skipped_entries": skipped_entries,
+            "glossary_entries": len(glossary),
+        },
+        "glossary": glossary,
         "entries": entries,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    return output_path
+    return ExchangeExportReport(
+        output_path=output_path,
+        exported_entries=len(entries),
+        skipped_entries=skipped_entries,
+        glossary_entries=len(glossary),
+    )
 
 
 def import_exchange(catalog: ResourceCatalog, input_path: Path) -> ResourceCatalog:

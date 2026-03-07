@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind
+from .terminology import is_unit_skippable
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +17,23 @@ class CatalogStats:
     already_localized: int
     mod_only: int
     manual_translation: int
+    skipped_mod_only: int
+
+
+@dataclass(frozen=True, slots=True)
+class TranslationProgress:
+    total: int
+    done: int
+    skipped: int
+
+    @property
+    def done_percent(self) -> int:
+        return 0 if self.total == 0 else round((self.done / self.total) * 100)
+
+    @property
+    def covered_percent(self) -> int:
+        covered = self.done + self.skipped
+        return 0 if self.total == 0 else round((covered / self.total) * 100)
 
 
 def summarize_catalog(catalog: ResourceCatalog, kind: ResourceKind | None = None) -> CatalogStats:
@@ -28,4 +46,21 @@ def summarize_catalog(catalog: ResourceCatalog, kind: ResourceKind | None = None
         already_localized=sum(1 for unit in units if unit.status == RelocalizationStatus.ALREADY_LOCALIZED),
         mod_only=sum(1 for unit in units if unit.status == RelocalizationStatus.MOD_ONLY),
         manual_translation=sum(1 for unit in units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION),
+        skipped_mod_only=sum(1 for unit in units if is_unit_skippable(unit)),
     )
+
+
+def calculate_translation_progress(catalog: ResourceCatalog) -> TranslationProgress:
+    units = catalog.units
+    done = sum(
+        1
+        for unit in units
+        if unit.status
+        in {
+            RelocalizationStatus.ALREADY_LOCALIZED,
+            RelocalizationStatus.AUTO_RELOCALIZE,
+            RelocalizationStatus.MANUAL_TRANSLATION,
+        }
+    )
+    skipped = sum(1 for unit in units if is_unit_skippable(unit))
+    return TranslationProgress(total=len(units), done=done, skipped=skipped)

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QSplitter,
     QStatusBar,
@@ -196,6 +197,9 @@ STRINGS = {
         "dialog.apply_title": "Uebersetzungen anwenden",
         "dialog.apply_confirm": "Es werden {count} Eintraege ersetzt. Vorher wird ein Backup angelegt.\n\nFortfahren?",
         "dialog.apply_preview": "Anwenden-Vorschau",
+        "dialog.apply_progress_title": "Uebersetzungen anwenden",
+        "dialog.apply_progress_copy": "Bearbeite {current}/{total}: {dll} wird komplett ersetzt...",
+        "dialog.apply_progress_patch": "Bearbeite {current}/{total}: {dll} wird gepatcht...",
         "dialog.restore_backup": "Backup wiederherstellen",
         "dialog.restore_confirm": "Backup wiederherstellen und aktuelle DLLs ueberschreiben?\n\n{path}",
         "dialog.apply_success": "Uebersetzungen abgeschlossen.\n\nErsetzte Eintraege: {count}\nGeschriebene DLLs: {dlls}\nBackup: {backup}",
@@ -379,6 +383,9 @@ STRINGS = {
         "dialog.apply_title": "Apply translations",
         "dialog.apply_confirm": "{count} entries will be replaced. A backup is created first.\n\nContinue?",
         "dialog.apply_preview": "Apply preview",
+        "dialog.apply_progress_title": "Apply translations",
+        "dialog.apply_progress_copy": "Processing {current}/{total}: replacing {dll}...",
+        "dialog.apply_progress_patch": "Processing {current}/{total}: patching {dll}...",
         "dialog.restore_backup": "Restore backup",
         "dialog.restore_confirm": "Restore this backup and overwrite current DLLs?\n\n{path}",
         "dialog.apply_success": "Translations finished.\n\nReplaced entries: {count}\nWritten DLLs: {dlls}\nBackup: {backup}",
@@ -1962,12 +1969,38 @@ class TranslatorMainWindow(QMainWindow):
             return
         try:
             report: ApplyReport | None = None
+            dll_count = len({unit.source.dll_name.lower() for unit in units})
+            progress = QProgressDialog(self._tr("dialog.apply_progress_title"), "", 0, max(1, dll_count), self)
+            progress.setWindowTitle(self._tr("dialog.apply_progress_title"))
+            progress.setCancelButton(None)
+            progress.setMinimumDuration(0)
+            progress.setAutoClose(True)
+            progress.setAutoReset(True)
+            progress.setValue(0)
+            progress.show()
 
             def _apply() -> None:
                 nonlocal report
-                report = self._writer.apply_german_relocalization(catalog, units=units, dll_plans=self._dll_plans)
+
+                def _update_progress(current: int, total: int, dll_name: str, action: str) -> None:
+                    key = "dialog.apply_progress_copy" if action == "copy" else "dialog.apply_progress_patch"
+                    progress.setMaximum(max(1, total))
+                    progress.setLabelText(
+                        self._tr(key).format(current=current, total=total, dll=dll_name)
+                    )
+                    progress.setValue(current - 1)
+                    QApplication.processEvents()
+
+                report = self._writer.apply_german_relocalization(
+                    catalog,
+                    units=units,
+                    dll_plans=self._dll_plans,
+                    progress_callback=_update_progress,
+                )
 
             self._with_busy_cursor(_apply)
+            progress.setValue(progress.maximum())
+            QApplication.processEvents()
             assert report is not None
         except Exception as exc:
             self._show_error(self._tr("error.apply_failed").format(error=exc))

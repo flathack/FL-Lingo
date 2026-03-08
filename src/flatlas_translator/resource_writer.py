@@ -74,6 +74,7 @@ class ResourceWriter:
         units=None,
         dll_plans: list[DllRelocalizationPlan] | None = None,
         backup_root: Path | None = None,
+        progress_callback=None,
     ) -> ApplyReport:
         selected_units = list(units if units is not None else catalog.units)
         apply_units = [
@@ -101,7 +102,8 @@ class ResourceWriter:
 
         written_files: list[Path] = []
         plan_by_name = {plan.dll_name: plan for plan in list(dll_plans or [])}
-        for dll_path, bucket in by_dll.items():
+        total_dlls = len(by_dll)
+        for index, (dll_path, bucket) in enumerate(by_dll.items(), start=1):
             dll_name = dll_path.name
             plan = plan_by_name.get(dll_name)
             current_strings = self._string_reader.read_strings(dll_path)
@@ -119,10 +121,14 @@ class ResourceWriter:
                 and plan.target_dll_path is not None
                 and plan.target_dll_path.is_file()
             ):
+                if progress_callback is not None:
+                    progress_callback(index, total_dlls, dll_name, "copy")
                 shutil.copy2(plan.target_dll_path, dll_path)
                 written_files.append(dll_path)
                 continue
 
+            if progress_callback is not None:
+                progress_callback(index, total_dlls, dll_name, "patch")
             ok, error = self._write_resource_dll_entries(dll_path, current_strings, current_infos)
             if not ok:
                 shutil.copy2(backup_path, dll_path)

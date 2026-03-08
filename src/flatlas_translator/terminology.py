@@ -100,17 +100,8 @@ def build_term_map(
     *,
     target_language: str = "de",
 ) -> dict[str, str]:
+    _ = units
     term_map = dict(load_default_term_translations(target_language))
-    for unit in units:
-        if not unit.has_target:
-            continue
-        source_text = _normalize_text(unit.source_text)
-        target_text = _normalize_text(unit.target_text)
-        if not source_text or not target_text or source_text == target_text:
-            continue
-        if not _is_term_candidate(source_text, target_text):
-            continue
-        term_map[source_text] = target_text
     return dict(sorted(term_map.items(), key=lambda item: (-len(item[0]), item[0].lower())))
 
 
@@ -173,9 +164,9 @@ def suggest_manual_translation(unit: TranslationUnit, term_map: dict[str, str]) 
     translated_lines: list[str] = []
     changed = False
     for line in lines:
-        exact_translation = term_map.get(line)
-        if exact_translation:
-            translated_lines.append(exact_translation)
+        translated_line = _translate_line_with_terms(line, term_map)
+        if translated_line != line:
+            translated_lines.append(translated_line)
             changed = True
             continue
         if is_line_non_translatable(line):
@@ -192,6 +183,19 @@ def prefill_translation_text(text: str, term_map: dict[str, str]) -> str:
     for source_term, target_term in term_map.items():
         translated = translated.replace(source_term, target_term)
     return translated
+
+
+def _translate_line_with_terms(line: str, term_map: dict[str, str]) -> str:
+    normalized = _normalize_text(line)
+    if not normalized:
+        return ""
+    exact_translation = term_map.get(normalized)
+    if exact_translation:
+        return exact_translation
+    colon_translation = _translate_colon_label_line(normalized, term_map)
+    if colon_translation:
+        return colon_translation
+    return prefill_translation_text(normalized, term_map)
 
 
 def is_unit_skippable(unit: TranslationUnit) -> bool:
@@ -290,6 +294,38 @@ def resolve_terminology_file(language_code: str = "de") -> Path:
     return fallback
 
 
+def save_term_mapping(
+    language_code: str,
+    source_term: str,
+    target_term: str,
+    *,
+    preferred_section: str = "misc",
+) -> Path:
+    source = _normalize_text(source_term)
+    target = _normalize_text(target_term)
+    if not source or not target:
+        raise ValueError("Source and target term must not be empty.")
+    terminology_path = resolve_terminology_file(language_code)
+    payload = json.loads(terminology_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        payload = {"language": _normalize_language_code(language_code), "terms": {}}
+    payload["language"] = _normalize_language_code(language_code)
+    terms = payload.get("terms")
+    if not isinstance(terms, dict):
+        terms = {}
+        payload["terms"] = terms
+    if not _update_nested_term(terms, source, target):
+        bucket_name = preferred_section.strip() or "misc"
+        bucket = terms.get(bucket_name)
+        if not isinstance(bucket, dict):
+            bucket = {}
+            terms[bucket_name] = bucket
+        bucket[source] = target
+    terminology_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    clear_term_map_cache()
+    return terminology_path
+
+
 def _load_term_translations_from_disk(language_code: str) -> dict[str, str]:
     for candidate in _terminology_file_candidates(language_code):
         if not candidate.is_file():
@@ -322,6 +358,19 @@ def _normalize_language_code(language_code: str) -> str:
     return normalized or "de"
 
 
+def _translate_colon_label_line(text: str, term_map: dict[str, str]) -> str:
+    label, separator, value = text.partition(":")
+    if separator != ":":
+        return ""
+    normalized_label = label.strip()
+    if not normalized_label:
+        return ""
+    translated_label = term_map.get(normalized_label)
+    if not translated_label:
+        return ""
+    return f"{translated_label}:{value}"
+
+
 def _flatten_term_sections(payload: object) -> dict[str, str]:
     if not isinstance(payload, dict):
         return {}
@@ -337,3 +386,17 @@ def _flatten_term_sections(payload: object) -> dict[str, str]:
         if source and target and not isinstance(value, dict):
             flattened[source] = target
     return flattened
+
+
+def _update_nested_term(payload: dict[str, object], source: str, target: str) -> bool:
+    for key, value in payload.items():
+        if isinstance(value, dict):
+            if source in value and not isinstance(value.get(source), dict):
+                value[source] = target
+                return True
+            if _update_nested_term(value, source, target):
+                return True
+        elif str(key).strip() == source:
+            payload[key] = target
+            return True
+    return False

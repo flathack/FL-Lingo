@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QMenu,
     QProgressDialog,
     QPushButton,
     QSplitter,
@@ -48,7 +49,7 @@ from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, Transla
 from .project_io import PROJECT_FILE_EXTENSION, TranslatorProject, load_project, project_signature, save_project
 from .resource_writer import ApplyReport, ResourceWriter
 from .stats import calculate_translation_progress, summarize_catalog
-from .terminology import apply_known_term_suggestions, clear_term_map_cache, resolve_terminology_file
+from .terminology import apply_known_term_suggestions, clear_term_map_cache, resolve_terminology_file, save_term_mapping
 from .translation_exchange import export_mod_only_exchange, import_exchange, update_manual_translation
 
 DISCORD_INVITE_URL = "https://discord.com/invite/RENtMMcc"
@@ -110,6 +111,7 @@ STRINGS = {
         "workflow.step2": "2. Referenzinstallation / Vergleichsspiel waehlen und vergleichen",
         "workflow.step3": "3. Mod-only Eintraege direkt bearbeiten oder exportieren/importieren",
         "workflow.step4": "4. Vorschau pruefen und Uebersetzungen anwenden",
+        "tab.start": "Start",
         "tab.main": "Hauptworkflow",
         "tab.editor": "Editor",
         "tab.dlls": "DLL-Analyse",
@@ -121,6 +123,11 @@ STRINGS = {
         "editor.help": "Hier werden standardmaessig nur fehlende Uebersetzungen angezeigt. Bereits uebersetzte Eintraege kannst du ueber die Filter wieder einblenden.",
         "editor.missing": "Fehlende Uebersetzungen: {count}",
         "editor.missing_detail": "Offene Mod-only Eintraege ohne manuelle Uebersetzung: {count}",
+        "group.terminology_map": "Terminologie-Mapping",
+        "label.term_source": "Quellbegriff",
+        "label.term_target": "Zielbegriff",
+        "btn.term_from_selection": "Aus Auswahl uebernehmen",
+        "btn.term_save": "Mapping speichern",
         "preview.edit_hint": "Direkt editierbar fuer manuelle Uebersetzungen oder Korrekturen.",
         "btn.save_edit": "Aenderung speichern",
         "btn.reset_edit": "Manuelle Aenderung zuruecksetzen",
@@ -150,11 +157,15 @@ STRINGS = {
         "menuitem.focus_units": "Eintragsliste fokussieren",
         "menuitem.appearance": "Darstellung...",
         "menuitem.open_terminology": "Terminologie oeffnen...",
+        "menuitem.term_source_from_selection": "Auswahl als Quellbegriff verwenden",
+        "menuitem.term_target_from_selection": "Auswahl als Zielbegriff verwenden",
+        "menuitem.term_save_from_selection": "Mapping fuer Auswahl speichern",
         "menuitem.check_updates": "Auf Updates pruefen...",
         "menuitem.help_contents": "Hilfe oeffnen...",
         "menuitem.about": "Ueber",
         "menuitem.project_load": "Projekt laden...",
         "menuitem.project_new": "Neues Projekt",
+        "menuitem.project_rebuild": "Projekt neu aufbauen",
         "menuitem.project_save": "Projekt speichern...",
         "menuitem.restore_backup": "Backup wiederherstellen...",
         "menuitem.file_assoc": ".FLLingo verknuepfen...",
@@ -163,10 +174,14 @@ STRINGS = {
         "status.project_saved": "Projekt gespeichert: {path}",
         "status.project_loaded": "Projekt geladen: {path}",
         "status.project_new": "Neues Projekt gestartet.",
+        "status.project_rebuilt": "Projekt neu aufgebaut.",
         "status.settings_applied": "Einstellungen angewendet.",
         "status.language_changed": "Sprache gewechselt.",
         "status.toolchain_started": "Toolchain-Installer gestartet.",
         "status.terminology_opened": "Terminologie geoeffnet: {path}",
+        "status.terminology_saved": "Terminologie-Mapping gespeichert: {source} -> {target}",
+        "status.term_source_selected": "Quellbegriff aus Auswahl uebernommen.",
+        "status.term_target_selected": "Zielbegriff aus Auswahl uebernommen.",
         "status.update_check_started": "Update-Pruefung gestartet.",
         "status.operation_failed": "Vorgang fehlgeschlagen.",
         "error.source_missing": "Quellpfad existiert nicht:\n{path}",
@@ -186,6 +201,8 @@ STRINGS = {
         "error.project_load_failed": "Projekt konnte nicht geladen werden:\n{error}",
         "error.file_assoc_failed": "Dateizuordnung konnte nicht eingerichtet werden:\n{error}",
         "error.terminology_open_failed": "Terminologie-Datei konnte nicht geoeffnet werden:\n{error}",
+        "error.term_mapping_empty": "Quell- und Zielbegriff muessen ausgefuellt sein.",
+        "error.term_mapping_save_failed": "Terminologie-Mapping konnte nicht gespeichert werden:\n{error}",
         "error.update_check_failed": "Update-Pruefung fehlgeschlagen:\n{error}",
         "dialog.export_visible": "Sichtbaren Datensatz exportieren",
         "dialog.project_save": "Projekt speichern",
@@ -194,6 +211,8 @@ STRINGS = {
         "dialog.file_assoc_done": "Dateizuordnung eingerichtet.\n\n{path}",
         "dialog.unsaved_title": "Ungespeicherte Aenderungen",
         "dialog.unsaved_message": "Es gibt ungespeicherte Aenderungen im aktuellen Projekt.\n\nVor dem Fortfahren speichern?",
+        "dialog.rebuild_title": "Projekt neu aufbauen",
+        "dialog.rebuild_message": "Das Projekt wird nur aus den aktuellen Spieldaten neu aufgebaut.\n\nManuelle Uebersetzungen, importierte Aenderungen und andere nicht aus dem Spiel geladene Projektanpassungen gehen dabei verloren.\n\nFortfahren?",
         "dialog.apply_title": "Uebersetzungen anwenden",
         "dialog.apply_confirm": "Es werden {count} Eintraege ersetzt. Vorher wird ein Backup angelegt.\n\nFortfahren?",
         "dialog.apply_preview": "Anwenden-Vorschau",
@@ -296,6 +315,7 @@ STRINGS = {
         "workflow.step2": "2. Choose the reference install / comparison game and compare",
         "workflow.step3": "3. Edit mod-only entries directly or use export/import",
         "workflow.step4": "4. Review the preview and apply translations",
+        "tab.start": "Start",
         "tab.main": "Main Workflow",
         "tab.editor": "Editor",
         "tab.dlls": "DLL Analysis",
@@ -307,6 +327,11 @@ STRINGS = {
         "editor.help": "This tab defaults to missing translations only. You can bring translated entries back with the filters.",
         "editor.missing": "Missing translations: {count}",
         "editor.missing_detail": "Open mod-only entries without manual translation: {count}",
+        "group.terminology_map": "Terminology Mapping",
+        "label.term_source": "Source term",
+        "label.term_target": "Target term",
+        "btn.term_from_selection": "Use selection",
+        "btn.term_save": "Save mapping",
         "preview.edit_hint": "Directly editable for manual translations or corrections.",
         "btn.save_edit": "Save edit",
         "btn.reset_edit": "Reset manual edit",
@@ -336,11 +361,15 @@ STRINGS = {
         "menuitem.focus_units": "Focus entries",
         "menuitem.appearance": "Appearance...",
         "menuitem.open_terminology": "Open terminology...",
+        "menuitem.term_source_from_selection": "Use selection as source term",
+        "menuitem.term_target_from_selection": "Use selection as target term",
+        "menuitem.term_save_from_selection": "Save mapping for selection",
         "menuitem.check_updates": "Check for updates...",
         "menuitem.help_contents": "Open help...",
         "menuitem.about": "About",
         "menuitem.project_load": "Load project...",
         "menuitem.project_new": "New project",
+        "menuitem.project_rebuild": "Rebuild project",
         "menuitem.project_save": "Save project...",
         "menuitem.restore_backup": "Restore backup...",
         "menuitem.file_assoc": "Associate .FLLingo...",
@@ -349,10 +378,14 @@ STRINGS = {
         "status.project_saved": "Project saved: {path}",
         "status.project_loaded": "Project loaded: {path}",
         "status.project_new": "Started a new project.",
+        "status.project_rebuilt": "Project rebuilt.",
         "status.settings_applied": "Settings applied.",
         "status.language_changed": "Language changed.",
         "status.toolchain_started": "Toolchain installer started.",
         "status.terminology_opened": "Opened terminology: {path}",
+        "status.terminology_saved": "Terminology mapping saved: {source} -> {target}",
+        "status.term_source_selected": "Source term copied from selection.",
+        "status.term_target_selected": "Target term copied from selection.",
         "status.update_check_started": "Started update check.",
         "status.operation_failed": "Operation failed.",
         "error.source_missing": "Source path does not exist:\n{path}",
@@ -372,6 +405,8 @@ STRINGS = {
         "error.project_load_failed": "Project could not be loaded:\n{error}",
         "error.file_assoc_failed": "File association could not be configured:\n{error}",
         "error.terminology_open_failed": "Terminology file could not be opened:\n{error}",
+        "error.term_mapping_empty": "Source term and target term must be filled in.",
+        "error.term_mapping_save_failed": "Terminology mapping could not be saved:\n{error}",
         "error.update_check_failed": "Update check failed:\n{error}",
         "dialog.export_visible": "Export visible dataset",
         "dialog.project_save": "Save project",
@@ -380,6 +415,8 @@ STRINGS = {
         "dialog.file_assoc_done": "File association configured.\n\n{path}",
         "dialog.unsaved_title": "Unsaved changes",
         "dialog.unsaved_message": "There are unsaved changes in the current project.\n\nSave before continuing?",
+        "dialog.rebuild_title": "Rebuild project",
+        "dialog.rebuild_message": "The project will be rebuilt only from the current game data.\n\nManual translations, imported changes, and other project edits that do not come from the game data will be lost.\n\nContinue?",
         "dialog.apply_title": "Apply translations",
         "dialog.apply_confirm": "{count} entries will be replaced. A backup is created first.\n\nContinue?",
         "dialog.apply_preview": "Apply preview",
@@ -856,10 +893,7 @@ class TranslatorMainWindow(QMainWindow):
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
 
-        layout.addWidget(self._build_workflow_group())
-        layout.addWidget(self._build_paths_group())
         layout.addWidget(self._build_project_status_group())
-        layout.addWidget(self._build_progress_group())
         layout.addWidget(self._build_main_navigation(), 1)
         layout.addWidget(self._build_footer())
 
@@ -895,6 +929,10 @@ class TranslatorMainWindow(QMainWindow):
         act_project_new = QAction(self._tr("menuitem.project_new"), self)
         act_project_new.triggered.connect(self._new_project_file)
         file_menu.addAction(act_project_new)
+
+        act_project_rebuild = QAction(self._tr("menuitem.project_rebuild"), self)
+        act_project_rebuild.triggered.connect(self._rebuild_project_file)
+        file_menu.addAction(act_project_rebuild)
 
         act_project_save = QAction(self._tr("menuitem.project_save"), self)
         act_project_save.triggered.connect(self._save_project_file)
@@ -1087,11 +1125,28 @@ class TranslatorMainWindow(QMainWindow):
         return self.dll_group
 
     def _build_main_navigation(self) -> QTabWidget:
-        self.main_tabs = QTabWidget()
-        self.main_tabs.addTab(self._build_main_workflow_page(), self._tr("tab.main"))
-        self.main_tabs.addTab(self._build_editor_page(), self._tr("tab.editor"))
-        self.main_tabs.addTab(self._build_dll_plan_group(), self._tr("tab.dlls"))
-        return self.main_tabs
+        self.root_tabs = QTabWidget()
+        self.root_tabs.addTab(self._build_start_page(), self._tr("tab.start"))
+        self.root_tabs.addTab(self._build_editor_workspace_page(), self._tr("tab.editor"))
+        return self.root_tabs
+
+    def _build_start_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(self._build_workflow_group())
+        layout.addWidget(self._build_paths_group())
+        layout.addWidget(self._build_progress_group())
+        layout.addWidget(self._build_main_workflow_page(), 1)
+        return page
+
+    def _build_editor_workspace_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        self.editor_tabs = QTabWidget()
+        self.editor_tabs.addTab(self._build_editor_page(), self._tr("tab.editor"))
+        self.editor_tabs.addTab(self._build_dll_plan_group(), self._tr("tab.dlls"))
+        layout.addWidget(self.editor_tabs)
+        return page
 
     def _build_main_workflow_page(self) -> QWidget:
         page = QWidget()
@@ -1144,10 +1199,30 @@ class TranslatorMainWindow(QMainWindow):
         layout.addWidget(self.editor_help_label)
         layout.addWidget(self.editor_missing_label)
         layout.addWidget(self.editor_missing_detail_label)
+        layout.addWidget(self._build_terminology_mapping_group())
         layout.addWidget(self._build_filters_group())
         layout.addWidget(self._build_main_splitter(), 1)
         self._refresh_editor_status()
         return page
+
+    def _build_terminology_mapping_group(self) -> QGroupBox:
+        self.terminology_map_group = QGroupBox(self._tr("group.terminology_map"))
+        layout = QGridLayout(self.terminology_map_group)
+        self.term_source_label = QLabel(self._tr("label.term_source"))
+        self.term_target_label = QLabel(self._tr("label.term_target"))
+        self.term_source_edit = QLineEdit()
+        self.term_target_edit = QLineEdit()
+        self.term_from_selection_button = QPushButton(self._tr("btn.term_from_selection"))
+        self.term_from_selection_button.clicked.connect(self._fill_term_from_selection)
+        self.term_save_button = QPushButton(self._tr("btn.term_save"))
+        self.term_save_button.clicked.connect(self._save_terminology_mapping)
+        layout.addWidget(self.term_source_label, 0, 0)
+        layout.addWidget(self.term_source_edit, 0, 1)
+        layout.addWidget(self.term_from_selection_button, 0, 2)
+        layout.addWidget(self.term_target_label, 1, 0)
+        layout.addWidget(self.term_target_edit, 1, 1)
+        layout.addWidget(self.term_save_button, 1, 2)
+        return self.terminology_map_group
 
     def _build_footer(self) -> QWidget:
         footer = QWidget()
@@ -1266,8 +1341,12 @@ class TranslatorMainWindow(QMainWindow):
 
         self.source_preview = QTextEdit()
         self.source_preview.setReadOnly(True)
+        self.source_preview.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.source_preview.customContextMenuRequested.connect(self._show_source_preview_context_menu)
         self.target_preview = QTextEdit()
         self.target_preview.setReadOnly(False)
+        self.target_preview.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.target_preview.customContextMenuRequested.connect(self._show_target_preview_context_menu)
 
         self.source_preview_group = QGroupBox(self._tr("preview.current"))
         source_box = self.source_preview_group
@@ -1311,15 +1390,19 @@ class TranslatorMainWindow(QMainWindow):
             line_edit.setText(directory)
 
     def _focus_editor_tab(self) -> None:
-        if hasattr(self, "main_tabs"):
-            self.main_tabs.setCurrentIndex(1)
+        if hasattr(self, "root_tabs"):
+            self.root_tabs.setCurrentIndex(1)
+        if hasattr(self, "editor_tabs"):
+            self.editor_tabs.setCurrentIndex(0)
         self._apply_editor_default_filters(force=False)
         self._refresh_table()
         self.table.setFocus()
 
     def _focus_dll_tab(self) -> None:
-        if hasattr(self, "main_tabs"):
-            self.main_tabs.setCurrentIndex(2)
+        if hasattr(self, "root_tabs"):
+            self.root_tabs.setCurrentIndex(1)
+        if hasattr(self, "editor_tabs"):
+            self.editor_tabs.setCurrentIndex(1)
         self.dll_plan_table.setFocus()
 
     def _store_language_pair(self) -> None:
@@ -1480,10 +1563,12 @@ class TranslatorMainWindow(QMainWindow):
             self.main_export_button.setEnabled(has_catalog)
             self.main_import_button.setEnabled(has_catalog)
             self.main_apply_button.setEnabled(has_comparison and has_toolchain)
-        if hasattr(self, "main_tabs"):
-            self.main_tabs.setTabEnabled(0, True)
-            self.main_tabs.setTabEnabled(1, has_catalog)
-            self.main_tabs.setTabEnabled(2, has_comparison)
+        if hasattr(self, "root_tabs"):
+            self.root_tabs.setTabEnabled(0, True)
+            self.root_tabs.setTabEnabled(1, has_catalog)
+        if hasattr(self, "editor_tabs"):
+            self.editor_tabs.setTabEnabled(0, has_catalog)
+            self.editor_tabs.setTabEnabled(1, has_comparison)
 
     def _current_project_signature(self) -> str | None:
         if self._current_catalog() is None:
@@ -1644,6 +1729,74 @@ class TranslatorMainWindow(QMainWindow):
         self.source_preview.setPlainText(unit.source_text)
         self.target_preview.setPlainText(unit.replacement_text)
 
+    def _fill_term_from_selection(self) -> None:
+        selected_text = self.source_preview.textCursor().selectedText().replace("\u2029", "\n").strip()
+        if not selected_text:
+            selected_text = self.target_preview.textCursor().selectedText().replace("\u2029", "\n").strip()
+        if not selected_text:
+            unit = self._selected_unit()
+            if unit is not None and "\n" not in unit.source_text.strip():
+                selected_text = unit.source_text.strip()
+        if selected_text:
+            self.term_source_edit.setText(selected_text)
+
+    def _selected_preview_text(self, preview: QTextEdit) -> str:
+        return preview.textCursor().selectedText().replace("\u2029", "\n").strip()
+
+    def _use_term_source_text(self, selected_text: str) -> None:
+        source_term = selected_text.strip()
+        if not source_term:
+            return
+        self.term_source_edit.setText(source_term)
+        self._set_status(self._tr("status.term_source_selected"))
+
+    def _use_term_target_text(self, selected_text: str) -> None:
+        target_term = selected_text.strip()
+        if not target_term:
+            return
+        self.term_target_edit.setText(target_term)
+        self._set_status(self._tr("status.term_target_selected"))
+
+    def _save_term_mapping_from_selection(self, selected_text: str) -> None:
+        self._use_term_source_text(selected_text)
+        self._save_terminology_mapping()
+
+    def _show_source_preview_context_menu(self, position) -> None:
+        menu = self.source_preview.createStandardContextMenu()
+        selected_text = self._selected_preview_text(self.source_preview)
+        if selected_text and "\n" not in selected_text:
+            menu.addSeparator()
+            use_action = menu.addAction(self._tr("menuitem.term_source_from_selection"))
+            use_action.triggered.connect(lambda checked=False, text=selected_text: self._use_term_source_text(text))
+            if self.term_target_edit.text().strip():
+                save_action = menu.addAction(self._tr("menuitem.term_save_from_selection"))
+                save_action.triggered.connect(
+                    lambda checked=False, text=selected_text: self._save_term_mapping_from_selection(text)
+                )
+        menu.exec(self.source_preview.mapToGlobal(position))
+
+    def _show_target_preview_context_menu(self, position) -> None:
+        menu = self.target_preview.createStandardContextMenu()
+        selected_text = self._selected_preview_text(self.target_preview)
+        if selected_text and "\n" not in selected_text:
+            menu.addSeparator()
+            use_action = menu.addAction(self._tr("menuitem.term_target_from_selection"))
+            use_action.triggered.connect(lambda checked=False, text=selected_text: self._use_term_target_text(text))
+        menu.exec(self.target_preview.mapToGlobal(position))
+
+    def _save_terminology_mapping(self) -> None:
+        source_term = self.term_source_edit.text().strip()
+        target_term = self.term_target_edit.text().strip()
+        if not source_term or not target_term:
+            self._show_error(self._tr("error.term_mapping_empty"))
+            return
+        try:
+            save_term_mapping(self._target_lang_code, source_term, target_term)
+        except Exception as exc:
+            self._show_error(self._tr("error.term_mapping_save_failed").format(error=exc))
+            return
+        self._set_status(self._tr("status.terminology_saved").format(source=source_term, target=target_term))
+
     def _save_manual_edit(self) -> None:
         unit = self._selected_unit()
         catalog = self._current_catalog()
@@ -1745,6 +1898,33 @@ class TranslatorMainWindow(QMainWindow):
             return
         self._reset_session_state()
         self._set_status(self._tr("status.project_new"))
+
+    def _rebuild_project_file(self) -> None:
+        if not self._confirm_unsaved_changes():
+            return
+        reply = QMessageBox.question(
+            self,
+            self._tr("dialog.rebuild_title"),
+            self._tr("dialog.rebuild_message"),
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._store_language_pair()
+        self._source_catalog = None
+        self._target_catalog = None
+        self._paired_catalog = None
+        self._dll_plans = []
+        self._visible_units = []
+        self._saved_project_signature = None
+        self._refresh_dll_plan_table()
+        self._populate_dll_filter(None)
+        self._refresh_table()
+        self._load_source_catalog()
+        if self.target_edit.text().strip():
+            self._load_compare_catalog()
+        self._set_status(self._tr("status.project_rebuilt"))
 
     def _ensure_project_extension(self, output_path: str) -> str:
         path = str(output_path or "").strip()
@@ -2236,6 +2416,11 @@ class TranslatorMainWindow(QMainWindow):
         self.main_apply_label.setText(self._tr("main.step.apply"))
         self.main_note_label.setText(self._tr("main.note"))
         self.editor_help_label.setText(self._tr("editor.help"))
+        self.terminology_map_group.setTitle(self._tr("group.terminology_map"))
+        self.term_source_label.setText(self._tr("label.term_source"))
+        self.term_target_label.setText(self._tr("label.term_target"))
+        self.term_from_selection_button.setText(self._tr("btn.term_from_selection"))
+        self.term_save_button.setText(self._tr("btn.term_save"))
         self.source_install_label.setText(self._tr("label.source_install"))
         self.target_install_label.setText(self._tr("label.target_install"))
         self.source_lang_label.setText(self._tr("label.source_language"))
@@ -2268,9 +2453,10 @@ class TranslatorMainWindow(QMainWindow):
         self.translation_progress_legend_label.setText(self._tr("progress.legend"))
         self.save_edit_button.setText(self._tr("btn.save_edit"))
         self.reset_edit_button.setText(self._tr("btn.reset_edit"))
-        self.main_tabs.setTabText(0, self._tr("tab.main"))
-        self.main_tabs.setTabText(1, self._tr("tab.editor"))
-        self.main_tabs.setTabText(2, self._tr("tab.dlls"))
+        self.root_tabs.setTabText(0, self._tr("tab.start"))
+        self.root_tabs.setTabText(1, self._tr("tab.editor"))
+        self.editor_tabs.setTabText(0, self._tr("tab.editor"))
+        self.editor_tabs.setTabText(1, self._tr("tab.dlls"))
         self._retitle_combo_items()
         self._update_units_header()
         self._update_dll_plan_headers()

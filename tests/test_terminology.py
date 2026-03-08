@@ -13,6 +13,7 @@ from flatlas_translator.terminology import (
     load_default_term_translations,
     prefill_translation_text,
     resolve_terminology_file,
+    save_term_mapping,
 )
 
 
@@ -80,6 +81,20 @@ def test_apply_known_term_suggestions_translates_structured_npc_entry() -> None:
     assert updated.units[2].manual_text == "Gilde der Kopfgeldjaeger\nAusruestungshaendler\nJohn Fahrenheit"
 
 
+def test_apply_known_term_suggestions_translates_known_terms_inside_composite_npc_line() -> None:
+    catalog = ResourceCatalog(
+        install_dir=Path("C:/source"),
+        freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
+        units=(
+            _unit("Blood Dragons\nShogun Base Equipment Dealer\nRikyu Asari", local_id=11),
+        ),
+    )
+
+    updated = apply_known_term_suggestions(catalog)
+
+    assert updated.units[0].manual_text == "Blutdrachen\nShogun Base Ausruestungshaendler\nRikyu Asari"
+
+
 def test_prefill_translation_text_replaces_known_terms_inside_text() -> None:
     term_map = {
         "Bounty Hunters Guild": "Gilde der Kopfgeldjaeger",
@@ -89,6 +104,52 @@ def test_prefill_translation_text_replaces_known_terms_inside_text() -> None:
     translated = prefill_translation_text("Bounty Hunters Guild\nEquipment Dealer\nJohn Fahrenheit", term_map)
 
     assert translated == "Gilde der Kopfgeldjaeger\nAusruestungshaendler\nJohn Fahrenheit"
+
+
+def test_prefill_translation_text_translates_colon_labels_without_touching_values() -> None:
+    term_map = {
+        "Armor": "Panzerung",
+        "Cargo Holds": "Laderaum",
+        "Additional Equipment": "Zusatzausruestung",
+    }
+
+    translated = prefill_translation_text(
+        "Armor: 10700\nCargo Holds: 100\nAdditional Equipment: M, CM, CD/T",
+        term_map,
+    )
+
+    assert translated == "Panzerung: 10700\nLaderaum: 100\nZusatzausruestung: M, CM, CD/T"
+
+
+def test_apply_known_term_suggestions_translates_ship_info_labels_before_colon() -> None:
+    catalog = ResourceCatalog(
+        install_dir=Path("C:/source"),
+        freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
+        units=(
+            _unit(
+                "Guns/Turrets: 6/0\n"
+                "Armor: 10700\n"
+                "Cargo Holds: 100\n"
+                "Max Batteries/NanoBots: 100/100\n"
+                "Optimal Weapon Class: 8\n"
+                "Max. Weapon Class: 10\n"
+                "Additional Equipment: M, CM, CD/T",
+                local_id=12,
+            ),
+        ),
+    )
+
+    updated = apply_known_term_suggestions(catalog)
+
+    assert updated.units[0].manual_text == (
+        "Geschuetze/Tuerme: 6/0\n"
+        "Panzerung: 10700\n"
+        "Laderaum: 100\n"
+        "Max Batterien/Nanobots: 100/100\n"
+        "Optimale Waffenklasse: 8\n"
+        "Max. Waffenklasse: 10\n"
+        "Zusatzausruestung: M, CM, CD/T"
+    )
 
 
 def test_load_default_term_translations_from_file(tmp_path: Path, monkeypatch) -> None:
@@ -124,3 +185,28 @@ def test_resolve_terminology_file_uses_language_specific_name(tmp_path: Path, mo
 
     assert resolved == expected
     assert resolved.is_file()
+
+
+def test_save_term_mapping_updates_or_adds_term_in_file(tmp_path: Path, monkeypatch) -> None:
+    terminology_path = tmp_path / "terminology.de.json"
+    terminology_path.write_text(
+        json.dumps(
+            {
+                "language": "de",
+                "terms": {
+                    "factions": {"Blood Dragons": "Blutdrachen"},
+                    "misc": {},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(terminology, "_terminology_file_candidates", lambda language_code: [terminology_path])
+    clear_term_map_cache()
+
+    save_term_mapping("de", "Blood Dragons", "Die Blutdrachen")
+    save_term_mapping("de", "Golden Crysanthenums", "Goldene Chrysanthemen")
+
+    payload = json.loads(terminology_path.read_text(encoding="utf-8"))
+    assert payload["terms"]["factions"]["Blood Dragons"] == "Die Blutdrachen"
+    assert payload["terms"]["misc"]["Golden Crysanthenums"] == "Goldene Chrysanthemen"

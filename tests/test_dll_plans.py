@@ -77,3 +77,45 @@ def test_build_dll_plans_marks_not_safe_when_no_german_match_exists() -> None:
     plans = build_dll_plans(source, paired, target)
 
     assert plans[0].strategy == DllStrategy.NOT_SAFE
+
+
+def test_build_dll_plans_counts_translated_units_per_dll() -> None:
+    source = ResourceCatalog(
+        install_dir=Path("C:/source"),
+        freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
+        units=(
+            _unit(ResourceKind.STRING, "InfoCards.dll", 1, "Same"),
+            _unit(ResourceKind.STRING, "InfoCards.dll", 2, "English Text"),
+            _unit(ResourceKind.STRING, "InfoCards.dll", 3, "Mod Only"),
+            _unit(ResourceKind.STRING, "InfoCards.dll", 4, "Manual Source"),
+        ),
+    )
+    target = ResourceCatalog(
+        install_dir=Path("C:/target"),
+        freelancer_ini=Path("C:/target/EXE/freelancer.ini"),
+        units=(
+            _unit(ResourceKind.STRING, "InfoCards.dll", 1, "Same"),
+            _unit(ResourceKind.STRING, "InfoCards.dll", 2, "Deutscher Text"),
+            _unit(ResourceKind.STRING, "InfoCards.dll", 4, "Noch nicht manuell"),
+        ),
+    )
+    paired = pair_catalogs(source, target)
+    paired = ResourceCatalog(
+        install_dir=paired.install_dir,
+        freelancer_ini=paired.freelancer_ini,
+        units=tuple(
+            TranslationUnit(
+                kind=unit.kind,
+                source=unit.source,
+                source_text=unit.source_text,
+                target=unit.target,
+                target_text=unit.target_text,
+                manual_text="Manuell gesetzt" if unit.source.local_id == 4 else unit.manual_text,
+            )
+            for unit in paired.units
+        ),
+    )
+
+    plans = build_dll_plans(source, paired, target)
+
+    assert plans[0].translated_units == 3

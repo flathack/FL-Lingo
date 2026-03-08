@@ -62,7 +62,7 @@ STRINGS = {
         "status.start": "Aktuelles Spiel laden und dann gegen die Referenzinstallation vergleichen.",
         "group.installs": "Installationen",
         "group.workflow": "Arbeitsablauf",
-        "group.main_actions": "Hauptworkflow",
+        "group.main_actions": "Import / Export fuer externe Uebersetzung",
         "group.filters": "Filter",
         "group.dll_analysis": "DLL-Analyse",
         "group.project": "Projektstatus",
@@ -78,9 +78,9 @@ STRINGS = {
         "btn.load_source": "Spiel laden",
         "btn.compare": "Mit Referenz vergleichen",
         "btn.export_visible": "Sichtbares JSON exportieren",
-        "btn.export_mod_only": "Mod-only exportieren",
+        "btn.export_mod_only": "Offene Eintraege exportieren",
         "btn.import_exchange": "Uebersetzung importieren",
-        "btn.apply_target": "Uebersetzungen anwenden",
+        "btn.apply_target": "Uebersetzung durchfuehren",
         "btn.install_toolchain": "Toolchain installieren",
         "kind.all": "alle",
         "label.kind": "Typ",
@@ -97,32 +97,39 @@ STRINGS = {
         "table.units.changed": "Geaendert",
         "table.units.preview": "Vorschau aktuell",
         "table.plans.dll": "DLL",
-        "table.plans.strategy": "Strategie",
-        "table.plans.strings": "Strings Quelle/Ziel",
-        "table.plans.infocards": "Infocards Quelle/Ziel",
-        "table.plans.auto": "Auto-Ziel",
-        "table.plans.mod_only": "Mod-only",
-        "table.plans.matched": "Gematcht",
-        "table.plans.action": "Aktion",
+        "table.plans.status": "Status",
+        "table.plans.coverage": "Uebersetzungsstand",
+        "table.plans.ready": "Bereit",
+        "table.plans.open": "Offen",
+        "table.plans.reference": "Mit Referenz",
+        "table.plans.action": "Vorgehen",
+        "dll.legend": "Legende: Datei = betroffene Ressourcendatei | Status = wie gut diese DLL bereits ueber die Referenzsprache abgedeckt ist | Uebersetzungsstand = bereits verfuegbare oder anwendbare Eintraege im Verhaeltnis zur Gesamtmenge | Bereit = schon in Zielsprache, automatisch uebernehmbar oder manuell uebersetzt | Offen = noch fehlende Eintraege | Mit Referenz = Eintraege mit Gegenstueck in der Referenzinstallation | Vorgehen = was FL Lingo beim Anwenden mit dieser DLL macht.",
+        "dll.tooltip.dll": "Name der betroffenen Ressourcen-DLL.",
+        "dll.tooltip.status": "Einschaetzung, ob diese DLL komplett abgedeckt, teilweise offen oder nur begrenzt automatisch nutzbar ist.",
+        "dll.tooltip.coverage": "Anteil der Eintraege, die schon verfuegbar, automatisch uebernehmbar oder manuell uebersetzt sind.",
+        "dll.tooltip.ready": "Eintraege, die FL Lingo bereits direkt anwenden kann.",
+        "dll.tooltip.open": "Eintraege, die weiterhin offen sind und noch uebersetzt werden muessen.",
+        "dll.tooltip.reference": "Eintraege mit passendem Gegenstueck in der Referenzinstallation.",
+        "dll.tooltip.action": "Die empfohlene Aktion fuer diese DLL beim Anwenden der Uebersetzungen.",
         "preview.current": "Quelltext",
         "preview.reference": "Zieltext / Referenztext",
-        "workflow.help": "Reihenfolge: 1. Aktuelles Spiel laden, 2. Referenzinstallation vergleichen, 3. Mod-only bei Bedarf uebersetzen, 4. Uebersetzungen anwenden.",
+        "workflow.help": "Reihenfolge: 1. Aktuelles Spiel laden, 2. Referenzinstallation vergleichen, 3. Offene Eintraege exportieren oder im Editor bearbeiten, 4. Uebersetzungen anwenden.",
         "workflow.step1": "1. Spiel mit Mod / aktuelles Spiel waehlen und laden",
         "workflow.step2": "2. Referenzinstallation / Vergleichsspiel waehlen und vergleichen",
-        "workflow.step3": "3. Mod-only Eintraege direkt bearbeiten oder exportieren/importieren",
+        "workflow.step3": "3. Offene Eintraege direkt bearbeiten oder exportieren/importieren",
         "workflow.step4": "4. Vorschau pruefen und Uebersetzungen anwenden",
-        "tab.start": "Start",
+        "tab.start": "Startseite",
         "tab.main": "Hauptworkflow",
-        "tab.editor": "Editor",
+        "tab.editor": "Uebersetzung",
         "tab.dlls": "DLL-Analyse",
-        "main.help": "Hauptworkflow fuer FL Lingo: Mod-only exportieren, extern uebersetzen, Uebersetzung importieren, danach Vorschau pruefen und anwenden.",
-        "main.step.export": "A. Mod-only exportieren",
+        "main.help": "Hauptworkflow fuer FL Lingo: offene Eintraege exportieren, extern uebersetzen, Uebersetzung importieren, danach Vorschau pruefen und anwenden.",
+        "main.step.export": "A. Offene Eintraege exportieren",
         "main.step.import": "B. Uebersetzung importieren",
         "main.step.apply": "C. Uebersetzungen anwenden",
         "main.note": "Der manuelle Editor ist optional und liegt im separaten Tab 'Editor'.",
         "editor.help": "Hier werden standardmaessig nur fehlende Uebersetzungen angezeigt. Bereits uebersetzte Eintraege kannst du ueber die Filter wieder einblenden.",
         "editor.missing": "Fehlende Uebersetzungen: {count}",
-        "editor.missing_detail": "Offene Mod-only Eintraege ohne manuelle Uebersetzung: {count}",
+        "editor.missing_detail": "Offene Eintraege ohne manuelle Uebersetzung: {count}",
         "group.terminology_map": "Terminologie-Mapping",
         "label.term_source": "Quellbegriff",
         "label.term_target": "Zielbegriff",
@@ -136,18 +143,18 @@ STRINGS = {
         "detail.none": "Keine Auswahl.",
         "summary.none": "Noch kein Katalog geladen.",
         "project.none": "Kein Projekt geladen",
-        "project.info": "Projekt: {name} | Status: {dirty} | Manuelle Eintraege: {manual} | Sichtbar: {visible}",
+        "project.info": "{name} | {dirty}",
         "progress.none": "Noch kein Katalog geladen.",
         "progress.text": "{percent}% | {done}/{total} Eintraege bereits verfuegbar oder automatisch uebernehmbar | {skipped} uebersprungen",
         "progress.legend": "Gruen = uebersetzt oder automatisch uebernehmbar | Gelb = bewusst uebersprungen",
         "project.saved": "gespeichert",
         "project.unsaved": "nicht gespeichert",
         "plan.action.full": "Ziel-DLL komplett kopieren",
-        "plan.action.patch": "nur passende Eintraege patchen",
-        "plan.action.unsafe": "nicht automatisch ersetzen",
-        "plan.strategy.full": "komplett durch Ziel-DLL ersetzbar",
-        "plan.strategy.patch": "nur teilweise rueckuebersetzbar",
-        "plan.strategy.unsafe": "nicht sicher ersetzbar",
+        "plan.action.patch": "fertige Eintraege anwenden",
+        "plan.action.unsafe": "manuell pruefen",
+        "plan.strategy.full": "Komplett mit Referenz abgedeckt",
+        "plan.strategy.patch": "Teilweise abgedeckt, Rest offen",
+        "plan.strategy.unsafe": "Nur begrenzt automatisch nutzbar",
         "menu.file": "Datei",
         "menu.view": "Ansicht",
         "menu.settings": "Einstellungen",
@@ -167,6 +174,7 @@ STRINGS = {
         "menuitem.project_new": "Neues Projekt",
         "menuitem.project_rebuild": "Projekt neu aufbauen",
         "menuitem.project_save": "Projekt speichern...",
+        "menuitem.project_save_as": "Projekt speichern unter...",
         "menuitem.restore_backup": "Backup wiederherstellen...",
         "menuitem.file_assoc": ".FLLingo verknuepfen...",
         "status.loaded_source": "Quellinstallation geladen: {path}",
@@ -193,7 +201,7 @@ STRINGS = {
         "error.toolchain_missing": "Keine Resource-Toolchain gefunden.\nBitte zuerst 'Toolchain installieren' ausfuehren.",
         "error.no_apply_units": "Keine automatisch oder manuell uebersetzbaren Eintraege in der aktuellen Ansicht.",
         "error.export_failed": "JSON-Export fehlgeschlagen:\n{error}",
-        "error.export_mod_only_failed": "Mod-only Export fehlgeschlagen:\n{error}",
+        "error.export_mod_only_failed": "Export offener Eintraege fehlgeschlagen:\n{error}",
         "error.import_failed": "Import fehlgeschlagen:\n{error}",
         "error.apply_failed": "Uebersetzungen konnten nicht angewendet werden:\n{error}",
         "error.toolchain_start_failed": "Toolchain-Installer konnte nicht gestartet werden:\n{error}",
@@ -206,6 +214,15 @@ STRINGS = {
         "error.update_check_failed": "Update-Pruefung fehlgeschlagen:\n{error}",
         "dialog.export_visible": "Sichtbaren Datensatz exportieren",
         "dialog.project_save": "Projekt speichern",
+        "dialog.project_save_as": "Projekt speichern unter",
+        "dialog.progress_title": "Bitte warten",
+        "progress.load_source": "Spielinstallation wird geladen...",
+        "progress.compare": "Referenzinstallation wird verglichen...",
+        "progress.export_visible": "Sichtbare Eintraege werden exportiert...",
+        "progress.export_open": "Offene Eintraege werden exportiert...",
+        "progress.import_translation": "Uebersetzungsdatei wird importiert...",
+        "progress.save_project": "Projekt wird gespeichert...",
+        "progress.load_project": "Projekt wird geladen...",
         "dialog.project_load": "Projekt laden",
         "dialog.file_assoc": ".FLLingo verknuepfen",
         "dialog.file_assoc_done": "Dateizuordnung eingerichtet.\n\n{path}",
@@ -214,7 +231,7 @@ STRINGS = {
         "dialog.rebuild_title": "Projekt neu aufbauen",
         "dialog.rebuild_message": "Das Projekt wird nur aus den aktuellen Spieldaten neu aufgebaut.\n\nManuelle Uebersetzungen, importierte Aenderungen und andere nicht aus dem Spiel geladene Projektanpassungen gehen dabei verloren.\n\nFortfahren?",
         "dialog.apply_title": "Uebersetzungen anwenden",
-        "dialog.apply_confirm": "Es werden {count} Eintraege ersetzt. Vorher wird ein Backup angelegt.\n\nFortfahren?",
+        "dialog.apply_confirm": "Es werden {count} Eintraege ersetzt. Vorher wird ein Backup angelegt.\n\nAbdeckung aktuell: {covered_percent}% ({covered}/{total} Eintraege sind bereits gruen oder gelb)\n\nFortfahren?",
         "dialog.apply_preview": "Anwenden-Vorschau",
         "dialog.apply_progress_title": "Uebersetzungen anwenden",
         "dialog.apply_progress_copy": "Bearbeite {current}/{total}: {dll} wird komplett ersetzt...",
@@ -258,7 +275,7 @@ STRINGS = {
         "status.already_localized": "Bereits in Zielsprache",
         "status.manual_translation": "Manuell uebersetzt",
         "status.mod_only": "Nur Mod-Inhalt",
-        "status.export_mod_only": "{exported} Mod-only Eintraege exportiert | {skipped} uebersprungen | Glossar {glossary}",
+        "status.export_mod_only": "{exported} offene Eintraege exportiert | {skipped} uebersprungen | Glossar {glossary}",
         "yes": "ja",
         "no": "nein",
     },
@@ -266,7 +283,7 @@ STRINGS = {
         "status.start": "Load the current game and compare it against the reference install.",
         "group.installs": "Installs",
         "group.workflow": "Workflow",
-        "group.main_actions": "Main Workflow",
+        "group.main_actions": "Import / Export for External Translation",
         "group.filters": "Filters",
         "group.dll_analysis": "DLL Analysis",
         "group.project": "Project Status",
@@ -282,9 +299,9 @@ STRINGS = {
         "btn.load_source": "Load game",
         "btn.compare": "Compare with reference",
         "btn.export_visible": "Export visible JSON",
-        "btn.export_mod_only": "Export mod-only",
+        "btn.export_mod_only": "Export open entries",
         "btn.import_exchange": "Import translation",
-        "btn.apply_target": "Apply translations",
+        "btn.apply_target": "Run translation",
         "btn.install_toolchain": "Install toolchain",
         "kind.all": "all",
         "label.kind": "Kind",
@@ -301,32 +318,39 @@ STRINGS = {
         "table.units.changed": "Changed",
         "table.units.preview": "Current preview",
         "table.plans.dll": "DLL",
-        "table.plans.strategy": "Strategy",
-        "table.plans.strings": "Strings source/target",
-        "table.plans.infocards": "Infocards source/target",
-        "table.plans.auto": "Auto-target",
-        "table.plans.mod_only": "Mod-only",
-        "table.plans.matched": "Matched",
+        "table.plans.status": "Status",
+        "table.plans.coverage": "Coverage",
+        "table.plans.ready": "Ready",
+        "table.plans.open": "Open",
+        "table.plans.reference": "With reference",
         "table.plans.action": "Action",
+        "dll.legend": "Legend: File = affected resource DLL | Status = how well the DLL is already covered by the reference language | Coverage = ready entries compared to all entries in that DLL | Ready = already in target language, auto-transferable, or manually translated | Open = entries still missing a translation | With reference = entries with a matching counterpart in the reference install | Action = what FL Lingo will do with this DLL when applying changes.",
+        "dll.tooltip.dll": "Name of the affected resource DLL.",
+        "dll.tooltip.status": "Assessment of whether this DLL is fully covered, partially open, or only limited in what can be applied automatically.",
+        "dll.tooltip.coverage": "Share of entries already available, auto-transferable, or manually translated.",
+        "dll.tooltip.ready": "Entries FL Lingo can already apply directly.",
+        "dll.tooltip.open": "Entries still missing a translation.",
+        "dll.tooltip.reference": "Entries with a matching counterpart in the reference install.",
+        "dll.tooltip.action": "The recommended action FL Lingo will perform for this DLL.",
         "preview.current": "Source text",
         "preview.reference": "Target / reference text",
-        "workflow.help": "Recommended order: 1. Load the current game, 2. Compare with the reference install, 3. Edit or export/import mod-only entries, 4. Review preview and apply translations.",
+        "workflow.help": "Recommended order: 1. Load the current game, 2. Compare with the reference install, 3. Edit open entries directly or export/import them, 4. Review preview and apply translations.",
         "workflow.step1": "1. Choose and load the game with mod / current game",
         "workflow.step2": "2. Choose the reference install / comparison game and compare",
-        "workflow.step3": "3. Edit mod-only entries directly or use export/import",
+        "workflow.step3": "3. Edit open entries directly or use export/import",
         "workflow.step4": "4. Review the preview and apply translations",
-        "tab.start": "Start",
+        "tab.start": "Start Page",
         "tab.main": "Main Workflow",
-        "tab.editor": "Editor",
+        "tab.editor": "Translation",
         "tab.dlls": "DLL Analysis",
-        "main.help": "Primary FL Lingo workflow: export mod-only entries, translate externally, import the translation, then review and apply.",
-        "main.step.export": "A. Export mod-only entries",
+        "main.help": "Primary FL Lingo workflow: export open entries, translate externally, import the translation, then review and apply.",
+        "main.step.export": "A. Export open entries",
         "main.step.import": "B. Import translation",
         "main.step.apply": "C. Apply translations",
         "main.note": "The manual editor is optional and lives in the separate 'Editor' tab.",
         "editor.help": "This tab defaults to missing translations only. You can bring translated entries back with the filters.",
         "editor.missing": "Missing translations: {count}",
-        "editor.missing_detail": "Open mod-only entries without manual translation: {count}",
+        "editor.missing_detail": "Open entries without manual translation: {count}",
         "group.terminology_map": "Terminology Mapping",
         "label.term_source": "Source term",
         "label.term_target": "Target term",
@@ -340,18 +364,18 @@ STRINGS = {
         "detail.none": "No selection.",
         "summary.none": "No catalog loaded.",
         "project.none": "No project loaded",
-        "project.info": "Project: {name} | Status: {dirty} | Manual entries: {manual} | Visible: {visible}",
+        "project.info": "{name} | {dirty}",
         "progress.none": "No catalog loaded yet.",
         "progress.text": "{percent}% | {done}/{total} entries already available or automatically transferable | {skipped} skipped",
         "progress.legend": "Green = translated or auto-transferable | Yellow = intentionally skipped",
         "project.saved": "saved",
         "project.unsaved": "unsaved",
         "plan.action.full": "copy target DLL",
-        "plan.action.patch": "patch matching entries only",
-        "plan.action.unsafe": "do not replace automatically",
-        "plan.strategy.full": "safe to replace with target DLL",
-        "plan.strategy.patch": "partially relocalizable only",
-        "plan.strategy.unsafe": "not safe to replace",
+        "plan.action.patch": "apply ready entries",
+        "plan.action.unsafe": "review manually",
+        "plan.strategy.full": "Fully covered by reference",
+        "plan.strategy.patch": "Partially covered, some open",
+        "plan.strategy.unsafe": "Limited automatic coverage",
         "menu.file": "File",
         "menu.view": "View",
         "menu.settings": "Settings",
@@ -371,6 +395,7 @@ STRINGS = {
         "menuitem.project_new": "New project",
         "menuitem.project_rebuild": "Rebuild project",
         "menuitem.project_save": "Save project...",
+        "menuitem.project_save_as": "Save project as...",
         "menuitem.restore_backup": "Restore backup...",
         "menuitem.file_assoc": "Associate .FLLingo...",
         "status.loaded_source": "Loaded source install: {path}",
@@ -397,7 +422,7 @@ STRINGS = {
         "error.toolchain_missing": "No resource toolchain found.\nRun 'Install toolchain' first.",
         "error.no_apply_units": "No automatically or manually translatable entries are visible in the current view.",
         "error.export_failed": "JSON export failed:\n{error}",
-        "error.export_mod_only_failed": "Mod-only export failed:\n{error}",
+        "error.export_mod_only_failed": "Open entry export failed:\n{error}",
         "error.import_failed": "Import failed:\n{error}",
         "error.apply_failed": "Applying translations failed:\n{error}",
         "error.toolchain_start_failed": "Toolchain installer could not be started:\n{error}",
@@ -410,6 +435,15 @@ STRINGS = {
         "error.update_check_failed": "Update check failed:\n{error}",
         "dialog.export_visible": "Export visible dataset",
         "dialog.project_save": "Save project",
+        "dialog.project_save_as": "Save project as",
+        "dialog.progress_title": "Please wait",
+        "progress.load_source": "Loading game install...",
+        "progress.compare": "Comparing reference install...",
+        "progress.export_visible": "Exporting visible entries...",
+        "progress.export_open": "Exporting open entries...",
+        "progress.import_translation": "Importing translation file...",
+        "progress.save_project": "Saving project...",
+        "progress.load_project": "Loading project...",
         "dialog.project_load": "Load project",
         "dialog.file_assoc": "Associate .FLLingo",
         "dialog.file_assoc_done": "File association configured.\n\n{path}",
@@ -418,7 +452,7 @@ STRINGS = {
         "dialog.rebuild_title": "Rebuild project",
         "dialog.rebuild_message": "The project will be rebuilt only from the current game data.\n\nManual translations, imported changes, and other project edits that do not come from the game data will be lost.\n\nContinue?",
         "dialog.apply_title": "Apply translations",
-        "dialog.apply_confirm": "{count} entries will be replaced. A backup is created first.\n\nContinue?",
+        "dialog.apply_confirm": "{count} entries will be replaced. A backup is created first.\n\nCurrent coverage: {covered_percent}% ({covered}/{total} entries are already green or yellow)\n\nContinue?",
         "dialog.apply_preview": "Apply preview",
         "dialog.apply_progress_title": "Apply translations",
         "dialog.apply_progress_copy": "Processing {current}/{total}: replacing {dll}...",
@@ -462,7 +496,7 @@ STRINGS = {
         "status.already_localized": "Already in target language",
         "status.manual_translation": "Manually translated",
         "status.mod_only": "Mod-only content",
-        "status.export_mod_only": "{exported} mod-only entries exported | {skipped} skipped | glossary {glossary}",
+        "status.export_mod_only": "{exported} open entries exported | {skipped} skipped | glossary {glossary}",
         "yes": "yes",
         "no": "no",
     },
@@ -878,7 +912,7 @@ class TranslatorMainWindow(QMainWindow):
         app.setStyleSheet(THEMES.get(self._theme, THEMES["light"]))
 
     def _setup_ui(self) -> None:
-        self.setWindowTitle(f"{self._config.app_title} v{self._config.app_version}")
+        self._refresh_window_title()
         icon = self._resolve_app_icon()
         if icon is not None:
             self.setWindowIcon(icon)
@@ -893,7 +927,6 @@ class TranslatorMainWindow(QMainWindow):
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
 
-        layout.addWidget(self._build_project_status_group())
         layout.addWidget(self._build_main_navigation(), 1)
         layout.addWidget(self._build_footer())
 
@@ -937,6 +970,10 @@ class TranslatorMainWindow(QMainWindow):
         act_project_save = QAction(self._tr("menuitem.project_save"), self)
         act_project_save.triggered.connect(self._save_project_file)
         file_menu.addAction(act_project_save)
+
+        act_project_save_as = QAction(self._tr("menuitem.project_save_as"), self)
+        act_project_save_as.triggered.connect(self._save_project_file_as)
+        file_menu.addAction(act_project_save_as)
 
         act_restore_backup = QAction(self._tr("menuitem.restore_backup"), self)
         act_restore_backup.triggered.connect(self._restore_backup)
@@ -1051,8 +1088,6 @@ class TranslatorMainWindow(QMainWindow):
 
         self.source_install_label = QLabel(self._tr("label.source_install"))
         self.target_install_label = QLabel(self._tr("label.target_install"))
-        self.workflow_help_label = QLabel(self._tr("workflow.help"))
-        self.workflow_help_label.setWordWrap(True)
 
         grid.addWidget(self.source_install_label, 0, 0)
         grid.addWidget(self.source_edit, 0, 1)
@@ -1074,45 +1109,25 @@ class TranslatorMainWindow(QMainWindow):
         actions.addWidget(self.include_infocards_check)
         actions.addStretch(1)
         actions.addWidget(self.toolchain_button)
-        actions.addWidget(self.apply_button)
         actions.addWidget(self.import_exchange_button)
         actions.addWidget(self.export_mod_only_button)
         actions.addWidget(self.export_button)
-        grid.addWidget(self.workflow_help_label, 3, 0, 1, 6)
-        grid.addLayout(actions, 4, 0, 1, 6)
+        grid.addLayout(actions, 3, 0, 1, 6)
         return self.paths_group
-
-    def _build_workflow_group(self) -> QGroupBox:
-        self.workflow_group = QGroupBox(self._tr("group.workflow"))
-        layout = QVBoxLayout(self.workflow_group)
-        self.workflow_step1_label = QLabel(self._tr("workflow.step1"))
-        self.workflow_step2_label = QLabel(self._tr("workflow.step2"))
-        self.workflow_step3_label = QLabel(self._tr("workflow.step3"))
-        self.workflow_step4_label = QLabel(self._tr("workflow.step4"))
-        for label in (
-            self.workflow_step1_label,
-            self.workflow_step2_label,
-            self.workflow_step3_label,
-            self.workflow_step4_label,
-        ):
-            label.setWordWrap(True)
-            layout.addWidget(label)
-        return self.workflow_group
 
     def _build_dll_plan_group(self) -> QGroupBox:
         self.dll_group = QGroupBox(self._tr("group.dll_analysis"))
         layout = QVBoxLayout(self.dll_group)
 
-        self.dll_plan_table = QTableWidget(0, 8)
+        self.dll_plan_table = QTableWidget(0, 6)
         self.dll_plan_table.setHorizontalHeaderLabels(
             [
                 self._tr("table.plans.dll"),
-                self._tr("table.plans.strategy"),
-                self._tr("table.plans.strings"),
-                self._tr("table.plans.infocards"),
-                self._tr("table.plans.auto"),
-                self._tr("table.plans.mod_only"),
-                self._tr("table.plans.matched"),
+                self._tr("table.plans.status"),
+                self._tr("table.plans.coverage"),
+                self._tr("table.plans.ready"),
+                self._tr("table.plans.open"),
+                self._tr("table.plans.reference"),
                 self._tr("table.plans.action"),
             ]
         )
@@ -1122,6 +1137,10 @@ class TranslatorMainWindow(QMainWindow):
         self.dll_plan_table.verticalHeader().setVisible(False)
         self.dll_plan_table.itemSelectionChanged.connect(self._sync_dll_filter_from_plan_table)
         layout.addWidget(self.dll_plan_table)
+        self.dll_legend_label = QLabel(self._tr("dll.legend"))
+        self.dll_legend_label.setWordWrap(True)
+        layout.addWidget(self.dll_legend_label)
+        self._update_dll_plan_headers()
         return self.dll_group
 
     def _build_main_navigation(self) -> QTabWidget:
@@ -1133,10 +1152,36 @@ class TranslatorMainWindow(QMainWindow):
     def _build_start_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.addWidget(self._build_workflow_group())
         layout.addWidget(self._build_paths_group())
         layout.addWidget(self._build_progress_group())
         layout.addWidget(self._build_main_workflow_page(), 1)
+        self.primary_apply_button = QPushButton(self._tr("btn.apply_target"))
+        self.primary_apply_button.clicked.connect(self._apply_target_to_install)
+        self.primary_apply_button.setMinimumHeight(56)
+        self.primary_apply_button.setStyleSheet(
+            "QPushButton {"
+            " background-color: #20c05c;"
+            " color: #ffffff;"
+            " font-size: 18px;"
+            " font-weight: 700;"
+            " border: 2px solid #83ffb0;"
+            " border-radius: 10px;"
+            " padding: 10px 20px;"
+            "}"
+            "QPushButton:hover {"
+            " background-color: #28d267;"
+            " border-color: #b8ffd0;"
+            "}"
+            "QPushButton:pressed {"
+            " background-color: #179949;"
+            "}"
+            "QPushButton:disabled {"
+            " background-color: #6a7a70;"
+            " color: #d7d7d7;"
+            " border-color: #89958d;"
+            "}"
+        )
+        layout.addWidget(self.primary_apply_button)
         return page
 
     def _build_editor_workspace_page(self) -> QWidget:
@@ -1153,13 +1198,6 @@ class TranslatorMainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         self.main_actions_group = QGroupBox(self._tr("group.main_actions"))
         group_layout = QVBoxLayout(self.main_actions_group)
-        self.main_help_label = QLabel(self._tr("main.help"))
-        self.main_help_label.setWordWrap(True)
-        self.main_export_label = QLabel(self._tr("main.step.export"))
-        self.main_import_label = QLabel(self._tr("main.step.import"))
-        self.main_apply_label = QLabel(self._tr("main.step.apply"))
-        self.main_note_label = QLabel(self._tr("main.note"))
-        self.main_note_label.setWordWrap(True)
         action_row = QHBoxLayout()
         self.main_export_button = QPushButton(self._tr("btn.export_mod_only"))
         self.main_export_button.clicked.connect(self._export_mod_only_exchange)
@@ -1169,16 +1207,7 @@ class TranslatorMainWindow(QMainWindow):
         self.main_apply_button.clicked.connect(self._apply_target_to_install)
         action_row.addWidget(self.main_export_button)
         action_row.addWidget(self.main_import_button)
-        action_row.addWidget(self.main_apply_button)
         action_row.addStretch(1)
-        for widget in (
-            self.main_help_label,
-            self.main_export_label,
-            self.main_import_label,
-            self.main_apply_label,
-            self.main_note_label,
-        ):
-            group_layout.addWidget(widget)
         group_layout.addLayout(action_row)
         layout.addWidget(self.main_actions_group)
         self.workflow_summary_label = QLabel(self._tr("summary.none"))
@@ -1237,15 +1266,6 @@ class TranslatorMainWindow(QMainWindow):
         layout.addWidget(self.footer_label)
         self._refresh_footer()
         return footer
-
-    def _build_project_status_group(self) -> QGroupBox:
-        self.project_group = QGroupBox(self._tr("group.project"))
-        layout = QVBoxLayout(self.project_group)
-        self.project_status_label = QLabel("")
-        self.project_status_label.setWordWrap(True)
-        layout.addWidget(self.project_status_label)
-        self._refresh_project_status()
-        return self.project_group
 
     def _build_progress_group(self) -> QGroupBox:
         self.progress_group = QGroupBox(self._tr("group.progress"))
@@ -1421,12 +1441,19 @@ class TranslatorMainWindow(QMainWindow):
             return
         self._store_language_pair()
         try:
-            self._with_busy_cursor(
-                lambda: setattr(
-                    self,
-                    "_source_catalog",
-                    self._loader.load_catalog(source_dir, include_infocards=self.include_infocards_check.isChecked()),
-                )
+            self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.load_source"),
+                lambda: self._with_busy_cursor(
+                    lambda: setattr(
+                        self,
+                        "_source_catalog",
+                        self._loader.load_catalog(
+                            source_dir,
+                            include_infocards=self.include_infocards_check.isChecked(),
+                        ),
+                    )
+                ),
             )
         except Exception as exc:
             self._show_error(self._tr("error.load_source_failed").format(error=exc))
@@ -1461,7 +1488,11 @@ class TranslatorMainWindow(QMainWindow):
                 nonlocal target_catalog
                 target_catalog = self._loader.load_catalog(target_dir, include_infocards=self.include_infocards_check.isChecked())
 
-            self._with_busy_cursor(_load)
+            self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.compare"),
+                lambda: self._with_busy_cursor(_load),
+            )
             assert target_catalog is not None
             self._target_catalog = target_catalog
             self._paired_catalog = apply_known_term_suggestions(
@@ -1541,12 +1572,12 @@ class TranslatorMainWindow(QMainWindow):
             return 0
         return sum(1 for unit in catalog.units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION)
 
-    def _translation_progress(self) -> tuple[int, int, int, int]:
+    def _translation_progress(self) -> tuple[int, int, int, int, int]:
         catalog = self._current_catalog()
         if catalog is None:
-            return (0, 0, 0, 0)
+            return (0, 0, 0, 0, 0)
         progress = calculate_translation_progress(catalog)
-        return (progress.done, progress.skipped, progress.total, progress.done_percent)
+        return (progress.done, progress.skipped, progress.total, progress.done_percent, progress.covered_percent)
 
     def _update_action_state(self) -> None:
         has_source = self._source_catalog is not None
@@ -1559,6 +1590,8 @@ class TranslatorMainWindow(QMainWindow):
             self.export_mod_only_button.setEnabled(has_catalog)
             self.import_exchange_button.setEnabled(has_catalog)
             self.apply_button.setEnabled(has_comparison and has_toolchain)
+        if hasattr(self, "primary_apply_button"):
+            self.primary_apply_button.setEnabled(has_comparison and has_toolchain)
         if hasattr(self, "main_export_button"):
             self.main_export_button.setEnabled(has_catalog)
             self.main_import_button.setEnabled(has_catalog)
@@ -1656,6 +1689,8 @@ class TranslatorMainWindow(QMainWindow):
     def _refresh_dll_plan_table(self) -> None:
         self.dll_plan_table.setRowCount(len(self._dll_plans))
         for row, plan in enumerate(self._dll_plans):
+            total_units = max(1, plan.source_strings + plan.source_infocards)
+            coverage_percent = round((plan.translated_units / total_units) * 100)
             action = (
                 self._tr("plan.action.full")
                 if plan.strategy == DllStrategy.FULL_REPLACE_SAFE
@@ -1666,9 +1701,8 @@ class TranslatorMainWindow(QMainWindow):
             values = [
                 plan.dll_name,
                 self._dll_strategy_label(plan.strategy),
-                f"{plan.source_strings}/{plan.target_strings}",
-                f"{plan.source_infocards}/{plan.target_infocards}",
-                str(plan.auto_relocalize_units),
+                f"{coverage_percent}% ({plan.translated_units}/{total_units})",
+                str(plan.translated_units),
                 str(plan.mod_only_units),
                 str(plan.matched_units),
                 action,
@@ -1845,7 +1879,11 @@ class TranslatorMainWindow(QMainWindow):
             return
         export_catalog = ResourceCatalog(catalog.install_dir, catalog.freelancer_ini, tuple(self._visible_units))
         try:
-            export_catalog_json(export_catalog, Path(output_path))
+            self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.export_visible"),
+                lambda: export_catalog_json(export_catalog, Path(output_path)),
+            )
         except Exception as exc:
             self._show_error(self._tr("error.export_failed").format(error=exc))
             return
@@ -1858,19 +1896,34 @@ class TranslatorMainWindow(QMainWindow):
         if self._current_catalog() is None:
             self._show_error(self._tr("error.load_first"))
             return False
+        if self._project_path is not None:
+            return self._save_project_to_path(self._project_path)
+        return self._save_project_file_as()
+
+    def _save_project_file_as(self) -> bool:
+        if self._current_catalog() is None:
+            self._show_error(self._tr("error.load_first"))
+            return False
         self._store_language_pair()
         default_path = self._project_path or (Path.cwd() / "build" / f"translator-project{PROJECT_FILE_EXTENSION}")
         output_path, _ = QFileDialog.getSaveFileName(
             self,
-            self._tr("dialog.project_save"),
+            self._tr("dialog.project_save_as"),
             str(default_path),
             f"FL Lingo Project (*{PROJECT_FILE_EXTENSION})",
         )
         if not output_path:
             return False
         output_path = self._ensure_project_extension(output_path)
+        return self._save_project_to_path(Path(output_path))
+
+    def _save_project_to_path(self, output_path: Path) -> bool:
         try:
-            save_project(self._current_project(), Path(output_path))
+            self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.save_project"),
+                lambda: save_project(self._current_project(), Path(output_path)),
+            )
         except Exception as exc:
             self._show_error(self._tr("error.project_save_failed").format(error=exc))
             return False
@@ -1936,7 +1989,11 @@ class TranslatorMainWindow(QMainWindow):
 
     def _load_project_path(self, input_path: Path) -> None:
         try:
-            project = load_project(Path(input_path))
+            project = self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.load_project"),
+                lambda: load_project(Path(input_path)),
+            )
         except Exception as exc:
             self._show_error(self._tr("error.project_load_failed").format(error=exc))
             return
@@ -2072,13 +2129,17 @@ class TranslatorMainWindow(QMainWindow):
         output_path, _ = QFileDialog.getSaveFileName(
             self,
             self._tr("btn.export_mod_only"),
-            str(Path.cwd() / "build" / "mod-only-exchange.json"),
+            str(Path.cwd() / "build" / "open-entries-exchange.json"),
             "JSON Files (*.json)",
         )
         if not output_path:
             return
         try:
-            report = export_mod_only_exchange(catalog, Path(output_path), target_language=self._target_lang_code)
+            report = self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.export_open"),
+                lambda: export_mod_only_exchange(catalog, Path(output_path), target_language=self._target_lang_code),
+            )
         except Exception as exc:
             self._show_error(self._tr("error.export_mod_only_failed").format(error=exc))
             return
@@ -2105,7 +2166,11 @@ class TranslatorMainWindow(QMainWindow):
         if not input_path:
             return
         try:
-            merged = import_exchange(catalog, Path(input_path))
+            merged = self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.import_translation"),
+                lambda: import_exchange(catalog, Path(input_path)),
+            )
         except Exception as exc:
             self._show_error(self._tr("error.import_failed").format(error=exc))
             return
@@ -2140,7 +2205,15 @@ class TranslatorMainWindow(QMainWindow):
         preview_box = QMessageBox(self)
         preview_box.setIcon(QMessageBox.Question)
         preview_box.setWindowTitle(self._tr("dialog.apply_preview"))
-        preview_box.setText(self._tr("dialog.apply_confirm").format(count=len(units)))
+        done, skipped, total, _percent, covered_percent = self._translation_progress()
+        preview_box.setText(
+            self._tr("dialog.apply_confirm").format(
+                count=len(units),
+                covered_percent=covered_percent,
+                covered=done + skipped,
+                total=total,
+            )
+        )
         preview_box.setDetailedText(self._build_apply_preview(units))
         preview_box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
         preview_box.setDefaultButton(QMessageBox.Yes)
@@ -2398,23 +2471,12 @@ class TranslatorMainWindow(QMainWindow):
     def _retranslate_ui(self) -> None:
         self.menuBar().clear()
         self._setup_menu_bar()
-        self.setWindowTitle(f"{self._config.app_title} v{self._config.app_version}")
-        self.workflow_group.setTitle(self._tr("group.workflow"))
+        self._refresh_window_title()
         self.paths_group.setTitle(self._tr("group.installs"))
-        self.project_group.setTitle(self._tr("group.project"))
         self.progress_group.setTitle(self._tr("group.progress"))
         self.main_actions_group.setTitle(self._tr("group.main_actions"))
         self.filters_group.setTitle(self._tr("group.filters"))
         self.dll_group.setTitle(self._tr("group.dll_analysis"))
-        self.workflow_step1_label.setText(self._tr("workflow.step1"))
-        self.workflow_step2_label.setText(self._tr("workflow.step2"))
-        self.workflow_step3_label.setText(self._tr("workflow.step3"))
-        self.workflow_step4_label.setText(self._tr("workflow.step4"))
-        self.main_help_label.setText(self._tr("main.help"))
-        self.main_export_label.setText(self._tr("main.step.export"))
-        self.main_import_label.setText(self._tr("main.step.import"))
-        self.main_apply_label.setText(self._tr("main.step.apply"))
-        self.main_note_label.setText(self._tr("main.note"))
         self.editor_help_label.setText(self._tr("editor.help"))
         self.terminology_map_group.setTitle(self._tr("group.terminology_map"))
         self.term_source_label.setText(self._tr("label.term_source"))
@@ -2436,11 +2498,10 @@ class TranslatorMainWindow(QMainWindow):
         self.export_mod_only_button.setText(self._tr("btn.export_mod_only"))
         self.import_exchange_button.setText(self._tr("btn.import_exchange"))
         self.apply_button.setText(self._tr("btn.apply_target"))
+        self.primary_apply_button.setText(self._tr("btn.apply_target"))
         self.toolchain_button.setText(self._tr("btn.install_toolchain"))
         self.main_export_button.setText(self._tr("btn.export_mod_only"))
         self.main_import_button.setText(self._tr("btn.import_exchange"))
-        self.main_apply_button.setText(self._tr("btn.apply_target"))
-        self.workflow_help_label.setText(self._tr("workflow.help"))
         self.kind_label.setText(self._tr("label.kind"))
         self.status_label.setText(self._tr("label.status"))
         self.search_label.setText(self._tr("label.search"))
@@ -2451,6 +2512,7 @@ class TranslatorMainWindow(QMainWindow):
         self.target_preview_group.setTitle(self._tr("preview.reference"))
         self.target_edit_hint.setText(self._tr("preview.edit_hint"))
         self.translation_progress_legend_label.setText(self._tr("progress.legend"))
+        self.dll_legend_label.setText(self._tr("dll.legend"))
         self.save_edit_button.setText(self._tr("btn.save_edit"))
         self.reset_edit_button.setText(self._tr("btn.reset_edit"))
         self.root_tabs.setTabText(0, self._tr("tab.start"))
@@ -2482,17 +2544,32 @@ class TranslatorMainWindow(QMainWindow):
 
     def _refresh_project_status(self) -> None:
         project_name = self._project_path.name if self._project_path is not None else self._tr("project.none")
-        self.project_status_label.setText(
-            self._tr("project.info").format(
-                name=project_name,
-                dirty=self._tr("project.unsaved") if self._is_project_dirty() else self._tr("project.saved"),
-                manual=self._manual_entry_count(),
-                visible=len(self._visible_units),
-            )
+        self._refresh_window_title(project_name)
+
+    def _run_with_progress(self, title: str, label: str, callback):
+        progress = QProgressDialog(label, "", 0, 0, self)
+        progress.setWindowTitle(title)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(True)
+        progress.setAutoReset(True)
+        progress.show()
+        QApplication.processEvents()
+        try:
+            return callback()
+        finally:
+            progress.close()
+
+    def _refresh_window_title(self, project_name: str | None = None) -> None:
+        resolved_project_name = project_name or (
+            self._project_path.name if self._project_path is not None else self._tr("project.none")
         )
+        project_state = self._tr("project.unsaved") if self._is_project_dirty() else self._tr("project.saved")
+        project_info = self._tr("project.info").format(name=resolved_project_name, dirty=project_state)
+        self.setWindowTitle(f"{self._config.app_title} v{self._config.app_version} | {project_info}")
 
     def _refresh_progress(self) -> None:
-        done, skipped, total, percent = self._translation_progress()
+        done, skipped, total, percent, _covered_percent = self._translation_progress()
         self.translation_progress_bar.set_progress(total=total, done=done, skipped=skipped)
         if total == 0:
             self.translation_progress_label.setText(self._tr("progress.none"))
@@ -2524,18 +2601,29 @@ class TranslatorMainWindow(QMainWindow):
         )
 
     def _update_dll_plan_headers(self) -> None:
-        self.dll_plan_table.setHorizontalHeaderLabels(
-            [
-                self._tr("table.plans.dll"),
-                self._tr("table.plans.strategy"),
-                self._tr("table.plans.strings"),
-                self._tr("table.plans.infocards"),
-                self._tr("table.plans.auto"),
-                self._tr("table.plans.mod_only"),
-                self._tr("table.plans.matched"),
-                self._tr("table.plans.action"),
-            ]
-        )
+        labels = [
+            self._tr("table.plans.dll"),
+            self._tr("table.plans.status"),
+            self._tr("table.plans.coverage"),
+            self._tr("table.plans.ready"),
+            self._tr("table.plans.open"),
+            self._tr("table.plans.reference"),
+            self._tr("table.plans.action"),
+        ]
+        tooltips = [
+            self._tr("dll.tooltip.dll"),
+            self._tr("dll.tooltip.status"),
+            self._tr("dll.tooltip.coverage"),
+            self._tr("dll.tooltip.ready"),
+            self._tr("dll.tooltip.open"),
+            self._tr("dll.tooltip.reference"),
+            self._tr("dll.tooltip.action"),
+        ]
+        self.dll_plan_table.setHorizontalHeaderLabels(labels)
+        for index, tooltip in enumerate(tooltips):
+            header_item = self.dll_plan_table.horizontalHeaderItem(index)
+            if header_item is not None:
+                header_item.setToolTip(tooltip)
 
     def _with_busy_cursor(self, callback) -> None:
         app = QApplication.instance()

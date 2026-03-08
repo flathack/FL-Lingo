@@ -26,6 +26,7 @@ class DllRelocalizationPlan:
     source_infocards: int
     target_infocards: int
     matched_units: int
+    translated_units: int
     auto_relocalize_units: int
     mod_only_units: int
 
@@ -62,6 +63,15 @@ def build_dll_plans(
         source_infocards = _count_kind(source_units, ResourceKind.INFOCARD)
         target_infocards = _count_kind(target_units, ResourceKind.INFOCARD)
         matched_units = sum(1 for unit in paired_units if unit.target is not None)
+        translated_units = sum(
+            1
+            for unit in paired_units
+            if unit.status in {
+                RelocalizationStatus.ALREADY_LOCALIZED,
+                RelocalizationStatus.AUTO_RELOCALIZE,
+                RelocalizationStatus.MANUAL_TRANSLATION,
+            }
+        )
         auto_units = sum(1 for unit in paired_units if unit.status == RelocalizationStatus.AUTO_RELOCALIZE)
         mod_only_units = sum(1 for unit in paired_units if unit.status == RelocalizationStatus.MOD_ONLY)
 
@@ -87,6 +97,7 @@ def build_dll_plans(
                 source_infocards=source_infocards,
                 target_infocards=target_infocards,
                 matched_units=matched_units,
+                translated_units=translated_units,
                 auto_relocalize_units=auto_units,
                 mod_only_units=mod_only_units,
             )

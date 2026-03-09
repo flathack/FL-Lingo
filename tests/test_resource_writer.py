@@ -63,6 +63,20 @@ def test_rc_escape_uses_rc_compatible_quotes() -> None:
     assert ResourceWriter._rc_escape("Schubdüse") == "Schubd\\u00FCse"
 
 
+def test_rc_escape_toolchain_preserves_unicode_characters() -> None:
+    escaped = ResourceWriter._rc_escape_toolchain('Barrager-Geschützturm "Alpha"')
+    assert '""Alpha""' in escaped
+    assert "\\xFC" in escaped
+    assert "Geschützturm" not in escaped
+    assert "\\u00FC" not in escaped
+
+
+def test_rc_escape_toolchain_uses_cp1252_bytes_for_smart_punctuation() -> None:
+    escaped = ResourceWriter._rc_escape_toolchain("Jun’ko… Ende")
+    assert "\\x92" in escaped
+    assert "\\x85" in escaped
+
+
 def test_load_apply_session_matches_signature() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
@@ -118,8 +132,10 @@ def test_load_apply_session_matches_signature() -> None:
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Linux/macOS-only behavior")
-def test_windows_only_installer_actions_fail_cleanly_on_non_windows() -> None:
+def test_windows_only_installer_actions_fail_cleanly_on_non_windows(monkeypatch: pytest.MonkeyPatch) -> None:
     writer = ResourceWriter()
+
+    monkeypatch.setattr(ResourceWriter, "_resource_toolchain_commands", staticmethod(lambda: None))
 
     assert writer.has_toolchain() is False
 
@@ -128,3 +144,9 @@ def test_windows_only_installer_actions_fail_cleanly_on_non_windows() -> None:
 
     with pytest.raises(RuntimeError, match="Windows"):
         ResourceWriter.install_file_association()
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Linux/macOS-only behavior")
+def test_has_toolchain_uses_non_windows_resource_toolchain(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ResourceWriter, "_resource_toolchain_commands", staticmethod(lambda: object()))
+    assert ResourceWriter().has_toolchain() is True

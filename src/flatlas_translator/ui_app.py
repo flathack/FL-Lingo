@@ -236,6 +236,8 @@ STRINGS = {
         "error.load_first": "Bitte zuerst eine Installation laden.",
         "error.compare_first": "Bitte zuerst mit der Referenzinstallation vergleichen.",
         "error.toolchain_missing": "Keine Resource-Toolchain gefunden.\nBitte zuerst 'Toolchain installieren' ausfuehren.",
+        "tooltip.apply_disabled_toolchain": "Es wurde keine unterstuetzte Resource-Toolchain gefunden. Installiere LLVM-Tools oder setze FLATLAS_TOOLCHAIN_DIR.",
+        "tooltip.apply_disabled_compare": "Lade zuerst ein aktuelles Spiel und eine Referenzinstallation, damit die Uebersetzung angewendet werden kann.",
         "error.no_apply_units": "Im aktuellen Projekt gibt es keine automatisch oder manuell anwendbaren Eintraege.",
         "error.export_failed": "JSON-Export fehlgeschlagen:\n{error}",
         "error.export_mod_only_failed": "Export offener Eintraege fehlgeschlagen:\n{error}",
@@ -488,6 +490,8 @@ STRINGS = {
         "error.load_first": "Load an install first.",
         "error.compare_first": "Compare against the reference install first.",
         "error.toolchain_missing": "No resource toolchain found.\nRun 'Install toolchain' first.",
+        "tooltip.apply_disabled_toolchain": "No supported resource toolchain was found. Install LLVM tools or set FLATLAS_TOOLCHAIN_DIR.",
+        "tooltip.apply_disabled_compare": "Load a current game and a reference install first so translations can be applied.",
         "error.no_apply_units": "There are no automatically or manually applicable entries in the current project.",
         "error.export_failed": "JSON export failed:\n{error}",
         "error.export_mod_only_failed": "Open entry export failed:\n{error}",
@@ -1449,6 +1453,8 @@ class TranslatorMainWindow(QMainWindow):
 
     def _setup_menu_bar(self) -> None:
         menu = self.menuBar()
+        if not sys.platform.startswith("darwin"):
+            menu.setNativeMenuBar(False)
         windows_only = self._writer.is_windows()
 
         file_menu = menu.addMenu(self._tr("menu.file"))
@@ -2195,6 +2201,11 @@ class TranslatorMainWindow(QMainWindow):
         has_catalog = self._current_catalog() is not None
         has_toolchain = self._writer.has_toolchain()
         can_apply = has_comparison and has_toolchain and not self._apply_active
+        apply_tooltip = ""
+        if not has_comparison:
+            apply_tooltip = self._tr("tooltip.apply_disabled_compare")
+        elif not has_toolchain:
+            apply_tooltip = self._tr("tooltip.apply_disabled_toolchain")
         if hasattr(self, "compare_button"):
             self.compare_button.setEnabled(has_source)
             self.export_button.setEnabled(has_catalog)
@@ -2202,13 +2213,16 @@ class TranslatorMainWindow(QMainWindow):
             self.export_long_open_button.setEnabled(has_catalog)
             self.import_exchange_button.setEnabled(has_catalog)
             self.apply_button.setEnabled(can_apply)
+            self.apply_button.setToolTip(apply_tooltip)
         if hasattr(self, "primary_apply_button"):
             self.primary_apply_button.setEnabled(can_apply)
+            self.primary_apply_button.setToolTip(apply_tooltip)
         if hasattr(self, "main_export_button"):
             self.main_export_button.setEnabled(has_catalog)
             self.main_long_export_button.setEnabled(has_catalog)
             self.main_import_button.setEnabled(has_catalog)
             self.main_apply_button.setEnabled(can_apply)
+            self.main_apply_button.setToolTip(apply_tooltip)
         if hasattr(self, "root_tabs"):
             self.root_tabs.setTabEnabled(0, True)
             self.root_tabs.setTabEnabled(1, has_catalog)

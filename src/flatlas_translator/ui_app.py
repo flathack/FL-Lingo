@@ -1449,6 +1449,7 @@ class TranslatorMainWindow(QMainWindow):
 
     def _setup_menu_bar(self) -> None:
         menu = self.menuBar()
+        windows_only = self._writer.is_windows()
 
         file_menu = menu.addMenu(self._tr("menu.file"))
         view_menu = menu.addMenu(self._tr("menu.view"))
@@ -1492,6 +1493,7 @@ class TranslatorMainWindow(QMainWindow):
 
         act_file_assoc = QAction(self._tr("menuitem.file_assoc"), self)
         act_file_assoc.triggered.connect(self._install_file_association)
+        act_file_assoc.setEnabled(windows_only)
         file_menu.addAction(act_file_assoc)
 
         act_export_visible = QAction(self._tr("btn.export_visible"), self)
@@ -1533,6 +1535,7 @@ class TranslatorMainWindow(QMainWindow):
 
         act_toolchain = QAction(self._tr("btn.install_toolchain"), self)
         act_toolchain.triggered.connect(self._install_toolchain)
+        act_toolchain.setEnabled(windows_only)
         settings_menu.addAction(act_toolchain)
 
         self._language_actions: dict[str, QAction] = {}
@@ -1563,8 +1566,10 @@ class TranslatorMainWindow(QMainWindow):
         self.paths_group = QGroupBox(self._tr("group.installs"))
         grid = QGridLayout(self.paths_group)
 
-        self.source_edit = QLineEdit(r"C:\Users\STAdmin\Downloads\_FL Fresh Install-englisch")
-        self.target_edit = QLineEdit(r"C:\Users\STAdmin\Downloads\_FL Fresh Install-deutsch")
+        self.source_edit = QLineEdit()
+        self.target_edit = QLineEdit()
+        self.source_edit.setPlaceholderText(self._default_install_path_hint("source"))
+        self.target_edit.setPlaceholderText(self._default_install_path_hint("target"))
         self.source_lang_label = QLabel(self._tr("label.source_language"))
         self.target_lang_label = QLabel(self._tr("label.target_language"))
         self.source_lang_edit = QComboBox()
@@ -1602,6 +1607,7 @@ class TranslatorMainWindow(QMainWindow):
         self.apply_button.clicked.connect(self._apply_target_to_install)
         self.toolchain_button = QPushButton(self._tr("btn.install_toolchain"))
         self.toolchain_button.clicked.connect(self._install_toolchain)
+        self.toolchain_button.setEnabled(self._writer.is_windows())
 
         self.source_install_label = QLabel(self._tr("label.source_install"))
         self.target_install_label = QLabel(self._tr("label.target_install"))
@@ -1996,6 +2002,13 @@ class TranslatorMainWindow(QMainWindow):
         directory = QFileDialog.getExistingDirectory(self, self._tr("group.installs"), start_dir)
         if directory:
             line_edit.setText(directory)
+
+    def _default_install_path_hint(self, role: str) -> str:
+        if self._writer.is_windows():
+            if role == "source":
+                return r"C:\Users\STAdmin\Downloads\_FL Fresh Install-englisch"
+            return r"C:\Users\STAdmin\Downloads\_FL Fresh Install-deutsch"
+        return str(Path.home())
 
     def _focus_editor_tab(self) -> None:
         if hasattr(self, "root_tabs"):
@@ -2972,7 +2985,8 @@ class TranslatorMainWindow(QMainWindow):
         try:
             terminology_path = resolve_terminology_file(self._target_lang_code)
             clear_term_map_cache()
-            os.startfile(str(terminology_path))
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(terminology_path))):
+                raise RuntimeError(f"Could not open file: {terminology_path}")
         except Exception as exc:
             self._show_error(self._tr("error.terminology_open_failed").format(error=exc))
             return

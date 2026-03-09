@@ -49,8 +49,12 @@ class ResourceWriter:
         self._string_reader = string_reader or DllStringTableReader()
         self._html_reader = html_reader or DllHtmlResourceReader()
 
-    def has_toolchain(self) -> bool:
+    @staticmethod
+    def is_windows() -> bool:
         return sys.platform.startswith("win")
+
+    def has_toolchain(self) -> bool:
+        return self.is_windows()
 
     @staticmethod
     def backup_root(install_dir: Path) -> Path:
@@ -280,6 +284,8 @@ class ResourceWriter:
 
     @staticmethod
     def launch_toolchain_installer() -> Path:
+        if not ResourceWriter.is_windows():
+            raise RuntimeError("Toolchain installer is only available on Windows.")
         script_path = next((path for path in ResourceWriter.install_script_candidates() if path.name == "install_ids_toolchain_windows.cmd"), None)
         if script_path is None:
             raise FileNotFoundError("Toolchain installer script not found.")
@@ -288,6 +294,8 @@ class ResourceWriter:
 
     @staticmethod
     def install_file_association() -> Path:
+        if not ResourceWriter.is_windows():
+            raise RuntimeError("File association setup is only available on Windows.")
         script_path = next((path for path in ResourceWriter.install_script_candidates() if path.name == "install_fllingo_file_association.cmd"), None)
         if script_path is None:
             raise FileNotFoundError("File association installer script not found.")

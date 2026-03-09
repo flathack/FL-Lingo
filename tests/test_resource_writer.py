@@ -1,5 +1,8 @@
+import sys
 from pathlib import Path
 import tempfile
+
+import pytest
 
 from flatlas_translator.models import ResourceCatalog, ResourceKind, ResourceLocation, TranslationUnit, make_global_id
 from flatlas_translator.resource_writer import ResourceWriter
@@ -112,3 +115,16 @@ def test_load_apply_session_matches_signature() -> None:
         assert session is not None
         assert session.completed_dlls == ("nameresources.dll",)
         assert session.pending_dlls == ()
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Linux/macOS-only behavior")
+def test_windows_only_installer_actions_fail_cleanly_on_non_windows() -> None:
+    writer = ResourceWriter()
+
+    assert writer.has_toolchain() is False
+
+    with pytest.raises(RuntimeError, match="Windows"):
+        ResourceWriter.launch_toolchain_installer()
+
+    with pytest.raises(RuntimeError, match="Windows"):
+        ResourceWriter.install_file_association()

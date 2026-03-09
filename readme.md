@@ -32,7 +32,7 @@ FL Lingo will then:
 
 ## Current Features
 
-- desktop application for Windows
+- desktop application for Windows and Linux
 - source and target language selection
 - compare current install and reference install
 - DLL-level safety analysis
@@ -170,20 +170,36 @@ Still recommended:
 Requirements:
 
 - Python 3.11+
-- Windows
+- Windows or Linux
+
+Current platform status:
+
+- Windows: full workflow including writing translations back into Freelancer DLLs
+- Linux: GUI, compare, export, import, project files, terminology, and analysis work
+- Linux limitation: the final DLL patch/apply step is still Windows-only
 
 Setup:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e .[all]
+```
+
+Run:
+
+```bash
+python launch.py
+```
+
+Windows PowerShell variant:
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install -e .[dev,ui]
-```
-
-Run:
-
-```powershell
+python -m pip install -e .[all]
 python launch.py
 ```
 
@@ -208,6 +224,12 @@ Project layout:
 - `tests/`: automated tests
 
 Run tests:
+
+```bash
+.venv/bin/python -m pytest
+```
+
+Windows PowerShell:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest

@@ -55,6 +55,7 @@ from .stats import calculate_translation_progress, summarize_catalog
 from .terminology import (
     apply_known_term_suggestions,
     clear_term_map_cache,
+    is_unit_skippable,
     list_pattern_entries,
     list_terminology_entries,
     resolve_terminology_file,
@@ -135,6 +136,7 @@ STRINGS = {
         "tab.main": "Hauptworkflow",
         "tab.editor": "Uebersetzung",
         "tab.dlls": "DLL-Analyse",
+        "tab.terminology": "Terminologie",
         "main.help": "Hauptworkflow fuer FL Lingo: offene Eintraege exportieren, extern uebersetzen, Uebersetzung importieren, danach Vorschau pruefen und anwenden.",
         "main.step.export": "A. Offene Eintraege exportieren",
         "main.step.import": "B. Uebersetzung importieren",
@@ -386,6 +388,7 @@ STRINGS = {
         "tab.main": "Main Workflow",
         "tab.editor": "Translation",
         "tab.dlls": "DLL Analysis",
+        "tab.terminology": "Terminology",
         "main.help": "Primary FL Lingo workflow: export open entries, translate externally, import the translation, then review and apply.",
         "main.step.export": "A. Export open entries",
         "main.step.import": "B. Import translation",
@@ -688,19 +691,99 @@ THEMES = {
             selection-background-color: #d97841;
             selection-color: #ffffff;
         }
+        QLineEdit:hover, QTextEdit:hover, QComboBox:hover, QTableWidget:hover {
+            border: 1px solid #d97841;
+        }
         QPushButton {
             background: #1f5c5c;
             color: #ffffff;
-            border: none;
+            border: 1px solid #1f5c5c;
+            border-radius: 6px;
             padding: 6px 10px;
+        }
+        QPushButton:hover {
+            background: #267171;
+            border-color: #d97841;
+        }
+        QPushButton:pressed {
+            background: #184a4a;
+            border-color: #b85e2c;
+            padding-top: 7px;
+            padding-bottom: 5px;
         }
         QPushButton:disabled {
             background: #97a4a4;
             color: #e7ecec;
+            border-color: #97a4a4;
         }
         QTabWidget::pane, QGroupBox {
             border: 1px solid #c9c0b3;
             margin-top: 10px;
+        }
+        QMenuBar {
+            background: #ece4d7;
+            color: #1f1a17;
+            border-bottom: 1px solid #c9c0b3;
+        }
+        QMenuBar::item {
+            background: transparent;
+            padding: 6px 10px;
+            margin: 1px 2px;
+            border-radius: 4px;
+        }
+        QMenuBar::item:selected {
+            background: #f7efe3;
+            color: #103c52;
+        }
+        QMenuBar::item:pressed {
+            background: #d97841;
+            color: #ffffff;
+        }
+        QMenu {
+            background: #fffdf8;
+            color: #1f1a17;
+            border: 1px solid #c9c0b3;
+        }
+        QMenu::item {
+            padding: 6px 24px 6px 12px;
+        }
+        QMenu::item:selected {
+            background: #d97841;
+            color: #ffffff;
+        }
+        QTabBar::tab {
+            background: #e8e0d4;
+            color: #1f1a17;
+            border: 1px solid #c9c0b3;
+            border-bottom: none;
+            padding: 7px 12px;
+            margin-right: 2px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+        }
+        QTabBar::tab:hover {
+            background: #f3ebdf;
+            color: #103c52;
+        }
+        QTabBar::tab:selected {
+            background: #fffdf8;
+            color: #103c52;
+            border-color: #d97841;
+        }
+        QComboBox::drop-down {
+            border: none;
+            width: 22px;
+        }
+        QCheckBox:hover, QGroupBox:hover {
+            color: #103c52;
+        }
+        QTableWidget::item:selected {
+            background: #d97841;
+            color: #ffffff;
+        }
+        QHeaderView::section:hover {
+            background: #efe6d9;
+            color: #103c52;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
@@ -715,15 +798,99 @@ THEMES = {
             color: #e6edf3;
             border: 1px solid #444c56;
         }
+        QLineEdit:hover, QTextEdit:hover, QComboBox:hover, QTableWidget:hover {
+            border: 1px solid #58a6ff;
+        }
         QPushButton {
             background: #2f81f7;
             color: white;
-            border: none;
+            border: 1px solid #2f81f7;
+            border-radius: 6px;
             padding: 6px 10px;
+        }
+        QPushButton:hover {
+            background: #4493f8;
+            border-color: #79c0ff;
+        }
+        QPushButton:pressed {
+            background: #1f6feb;
+            border-color: #1f6feb;
+            padding-top: 7px;
+            padding-bottom: 5px;
+        }
+        QPushButton:disabled {
+            background: #4b5563;
+            color: #c9d1d9;
+            border-color: #4b5563;
+        }
+        QTabBar::tab {
+            background: #2d333b;
+            color: #c9d1d9;
+            border: 1px solid #444c56;
+            border-bottom: none;
+            padding: 7px 12px;
+            margin-right: 2px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+        }
+        QTabBar::tab:hover {
+            background: #343b43;
+            color: #ffffff;
+        }
+        QTabBar::tab:selected {
+            background: #1f2329;
+            color: #79c0ff;
+            border-color: #58a6ff;
+        }
+        QComboBox::drop-down {
+            border: none;
+            width: 22px;
+        }
+        QCheckBox:hover, QGroupBox:hover {
+            color: #79c0ff;
+        }
+        QTableWidget::item:selected {
+            background: #2f81f7;
+            color: #ffffff;
+        }
+        QHeaderView::section:hover {
+            background: #343b43;
+            color: #ffffff;
         }
         QGroupBox {
             border: 1px solid #444c56;
             margin-top: 10px;
+        }
+        QMenuBar {
+            background: #161b22;
+            color: #e6edf3;
+            border-bottom: 1px solid #30363d;
+        }
+        QMenuBar::item {
+            background: transparent;
+            padding: 6px 10px;
+            margin: 1px 2px;
+            border-radius: 4px;
+        }
+        QMenuBar::item:selected {
+            background: #30363d;
+            color: #ffffff;
+        }
+        QMenuBar::item:pressed {
+            background: #2f81f7;
+            color: #ffffff;
+        }
+        QMenu {
+            background: #1f2329;
+            color: #e6edf3;
+            border: 1px solid #444c56;
+        }
+        QMenu::item {
+            padding: 6px 24px 6px 12px;
+        }
+        QMenu::item:selected {
+            background: #2f81f7;
+            color: #ffffff;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
@@ -741,12 +908,28 @@ THEMES = {
             selection-background-color: #00ffff;
             selection-color: #000000;
         }
+        QLineEdit:hover, QTextEdit:hover, QComboBox:hover, QTableWidget:hover {
+            border: 2px solid #00ffff;
+        }
         QPushButton {
             background: #ffff00;
             color: #000000;
             border: 2px solid #ffffff;
             padding: 6px 10px;
             font-weight: bold;
+            border-radius: 6px;
+        }
+        QPushButton:hover {
+            background: #00ffff;
+            color: #000000;
+            border-color: #ffff00;
+        }
+        QPushButton:pressed {
+            background: #ff8c00;
+            color: #000000;
+            border-color: #ffffff;
+            padding-top: 7px;
+            padding-bottom: 5px;
         }
         QPushButton:disabled {
             background: #666666;
@@ -755,6 +938,64 @@ THEMES = {
         }
         QLabel, QCheckBox, QGroupBox, QTabBar::tab {
             color: #ffffff;
+        }
+        QMenuBar {
+            background: #000000;
+            color: #ffffff;
+            border-bottom: 2px solid #ffffff;
+        }
+        QMenuBar::item {
+            background: transparent;
+            padding: 6px 10px;
+            margin: 1px 2px;
+        }
+        QMenuBar::item:selected {
+            background: #00ffff;
+            color: #000000;
+        }
+        QMenuBar::item:pressed {
+            background: #ffff00;
+            color: #000000;
+        }
+        QMenu {
+            background: #000000;
+            color: #ffffff;
+            border: 2px solid #ffffff;
+        }
+        QMenu::item {
+            padding: 6px 24px 6px 12px;
+        }
+        QMenu::item:selected {
+            background: #00ffff;
+            color: #000000;
+        }
+        QTabBar::tab {
+            background: #000000;
+            border: 2px solid #ffffff;
+            border-bottom: none;
+            padding: 7px 12px;
+            margin-right: 2px;
+        }
+        QTabBar::tab:hover {
+            background: #00ffff;
+            color: #000000;
+            border-color: #ffff00;
+        }
+        QTabBar::tab:selected {
+            background: #ffff00;
+            color: #000000;
+            border-color: #ffffff;
+        }
+        QComboBox::drop-down {
+            border: none;
+            width: 22px;
+        }
+        QCheckBox:hover, QGroupBox:hover {
+            color: #00ffff;
+        }
+        QTableWidget::item:selected {
+            background: #00ffff;
+            color: #000000;
         }
         QTabWidget::pane, QGroupBox {
             border: 2px solid #ffffff;
@@ -769,6 +1010,10 @@ THEMES = {
             background: #000000;
             color: #ffffff;
             border: 1px solid #ffff00;
+        }
+        QHeaderView::section:hover {
+            background: #00ffff;
+            color: #000000;
         }
     """,
 }
@@ -838,6 +1083,7 @@ class TranslatorMainWindow(QMainWindow):
             self._theme = "light"
         self._source_lang_code = self._normalize_lang_code(getattr(self._config, "default_source_language", "en"), "en")
         self._target_lang_code = self._normalize_lang_code(getattr(self._config, "default_target_language", "de"), "de")
+        self._startup_last_project_path: Path | None = None
         self._settings = QSettings("FLAtlas", "FLAtlas-Translator")
         self._load_persistent_settings()
         self._loader = CatalogLoader()
@@ -864,6 +1110,8 @@ class TranslatorMainWindow(QMainWindow):
         startup_project = getattr(self._config, "startup_project_path", None)
         if startup_project:
             self._load_project_path(Path(str(startup_project)))
+        elif self._startup_last_project_path is not None:
+            self._try_restore_last_project(self._startup_last_project_path)
 
     def _resolve_app_icon(self) -> QIcon | None:
         candidates: list[Path] = []
@@ -962,7 +1210,9 @@ class TranslatorMainWindow(QMainWindow):
         return sum(
             1
             for unit in catalog.units
-            if unit.status == RelocalizationStatus.MOD_ONLY and not str(unit.manual_text or "").strip()
+            if unit.status == RelocalizationStatus.MOD_ONLY
+            and not str(unit.manual_text or "").strip()
+            and not is_unit_skippable(unit)
         )
 
     def _refresh_editor_status(self) -> None:
@@ -1150,18 +1400,21 @@ class TranslatorMainWindow(QMainWindow):
         saved_theme = str(self._settings.value("ui/theme", self._theme) or self._theme).lower()
         saved_source_language = self._normalize_lang_code(self._settings.value("translation/source_language", self._source_lang_code), self._source_lang_code)
         saved_target_language = self._normalize_lang_code(self._settings.value("translation/target_language", self._target_lang_code), self._target_lang_code)
+        saved_project_path = str(self._settings.value("project/last_path", "") or "").strip()
         if saved_language in STRINGS:
             self._lang = saved_language
         if saved_theme in THEMES:
             self._theme = saved_theme
         self._source_lang_code = saved_source_language
         self._target_lang_code = saved_target_language
+        self._startup_last_project_path = Path(saved_project_path) if saved_project_path else None
 
     def _save_persistent_settings(self) -> None:
         self._settings.setValue("ui/language", self._lang)
         self._settings.setValue("ui/theme", self._theme)
         self._settings.setValue("translation/source_language", self._source_lang_code)
         self._settings.setValue("translation/target_language", self._target_lang_code)
+        self._settings.setValue("project/last_path", str(self._project_path) if self._project_path is not None else "")
 
     def _apply_theme(self) -> None:
         app = QApplication.instance()
@@ -1478,6 +1731,7 @@ class TranslatorMainWindow(QMainWindow):
         self.editor_tabs = QTabWidget()
         self.editor_tabs.addTab(self._build_editor_page(), self._tr("tab.editor"))
         self.editor_tabs.addTab(self._build_dll_plan_group(), self._tr("tab.dlls"))
+        self.editor_tabs.addTab(self._build_terminology_page(), self._tr("tab.terminology"))
         layout.addWidget(self.editor_tabs)
         return page
 
@@ -1519,11 +1773,16 @@ class TranslatorMainWindow(QMainWindow):
         layout.addWidget(self.editor_help_label)
         layout.addWidget(self.editor_missing_label)
         layout.addWidget(self.editor_missing_detail_label)
-        layout.addWidget(self._build_terminology_mapping_group())
-        layout.addWidget(self._build_terminology_management_group())
         layout.addWidget(self._build_filters_group())
         layout.addWidget(self._build_main_splitter(), 1)
         self._refresh_editor_status()
+        return page
+
+    def _build_terminology_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(self._build_terminology_mapping_group())
+        layout.addWidget(self._build_terminology_management_group(), 1)
         return page
 
     def _build_terminology_mapping_group(self) -> QGroupBox:
@@ -1894,6 +2153,7 @@ class TranslatorMainWindow(QMainWindow):
         self._refresh_dll_plan_table()
         self._refresh_table()
         self._refresh_footer()
+        self._save_persistent_settings()
         self._update_action_state()
 
     def _manual_entry_count(self) -> int:
@@ -1942,6 +2202,7 @@ class TranslatorMainWindow(QMainWindow):
         if hasattr(self, "editor_tabs"):
             self.editor_tabs.setTabEnabled(0, has_catalog)
             self.editor_tabs.setTabEnabled(1, has_comparison)
+            self.editor_tabs.setTabEnabled(2, has_catalog)
 
     def _current_project_signature(self) -> str | None:
         if self._current_catalog() is None:
@@ -2450,6 +2711,14 @@ class TranslatorMainWindow(QMainWindow):
         self._set_status(self._tr("status.project_loaded").format(path=input_path))
         self._refresh_project_status()
 
+    def _try_restore_last_project(self, input_path: Path) -> None:
+        if not Path(input_path).is_file():
+            self._project_path = None
+            self._startup_last_project_path = None
+            self._save_persistent_settings()
+            return
+        self._load_project_path(Path(input_path))
+
     def _build_apply_preview(self, units: list[TranslationUnit]) -> str:
         by_dll: dict[str, dict[str, int | str]] = {}
         plan_by_name = {plan.dll_name: plan for plan in self._dll_plans}
@@ -2942,6 +3211,7 @@ class TranslatorMainWindow(QMainWindow):
         self.root_tabs.setTabText(1, self._tr("tab.editor"))
         self.editor_tabs.setTabText(0, self._tr("tab.editor"))
         self.editor_tabs.setTabText(1, self._tr("tab.dlls"))
+        self.editor_tabs.setTabText(2, self._tr("tab.terminology"))
         self._retitle_combo_items()
         self._update_units_header()
         self._update_dll_plan_headers()

@@ -186,6 +186,7 @@
   "summary.unsafe": "DLL unsafe {count}",
   "summary.visible": "Visible {visible}/{total}",
   "tab.dlls": "DLL Analysis",
+  "tab.terminology": "Terminology",
   "tab.editor": "Translation",
   "tab.main": "Main Workflow",
   "tab.start": "Start Page",

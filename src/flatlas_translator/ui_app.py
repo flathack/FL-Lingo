@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
 import ssl
 import sys
+import threading
 from urllib import request as urlrequest
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QMenu,
     QProgressDialog,
+    QProgressBar,
     QPushButton,
     QSplitter,
     QStatusBar,
@@ -49,8 +52,16 @@ from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, Transla
 from .project_io import PROJECT_FILE_EXTENSION, TranslatorProject, load_project, project_signature, save_project
 from .resource_writer import ApplyReport, ResourceWriter
 from .stats import calculate_translation_progress, summarize_catalog
-from .terminology import apply_known_term_suggestions, clear_term_map_cache, resolve_terminology_file, save_term_mapping
-from .translation_exchange import export_mod_only_exchange, import_exchange, update_manual_translation
+from .terminology import (
+    apply_known_term_suggestions,
+    clear_term_map_cache,
+    list_pattern_entries,
+    list_terminology_entries,
+    resolve_terminology_file,
+    save_replacement_pattern,
+    save_term_mapping,
+)
+from .translation_exchange import export_long_open_exchange, export_mod_only_exchange, import_exchange, update_manual_translation
 
 DISCORD_INVITE_URL = "https://discord.com/invite/RENtMMcc"
 GITHUB_REPO_URL = "https://github.com/flathack/FL-Lingo"
@@ -63,6 +74,7 @@ STRINGS = {
         "group.installs": "Installationen",
         "group.workflow": "Arbeitsablauf",
         "group.main_actions": "Import / Export fuer externe Uebersetzung",
+        "group.apply_execution": "Uebersetzungsdurchlauf",
         "group.filters": "Filter",
         "group.dll_analysis": "DLL-Analyse",
         "group.project": "Projektstatus",
@@ -79,6 +91,7 @@ STRINGS = {
         "btn.compare": "Mit Referenz vergleichen",
         "btn.export_visible": "Sichtbares JSON exportieren",
         "btn.export_mod_only": "Offene Eintraege exportieren",
+        "btn.export_long_open": "Lange offene Texte exportieren",
         "btn.import_exchange": "Uebersetzung importieren",
         "btn.apply_target": "Uebersetzung durchfuehren",
         "btn.install_toolchain": "Toolchain installieren",
@@ -131,10 +144,21 @@ STRINGS = {
         "editor.missing": "Fehlende Uebersetzungen: {count}",
         "editor.missing_detail": "Offene Eintraege ohne manuelle Uebersetzung: {count}",
         "group.terminology_map": "Terminologie-Mapping",
+        "group.terminology_manage": "Terminologie und Pattern-Verwaltung",
         "label.term_source": "Quellbegriff",
         "label.term_target": "Zielbegriff",
+        "label.pattern_source": "Pattern Quelle",
+        "label.pattern_target": "Pattern Ziel",
         "btn.term_from_selection": "Aus Auswahl uebernehmen",
         "btn.term_save": "Mapping speichern",
+        "btn.pattern_save": "Pattern speichern",
+        "btn.terminology_reload": "Listen neu laden",
+        "table.terms.section": "Bereich",
+        "table.terms.source": "Quelle",
+        "table.terms.target": "Ziel",
+        "table.patterns.section": "Bereich",
+        "table.patterns.source": "Pattern",
+        "table.patterns.target": "Ersetzung",
         "preview.edit_hint": "Direkt editierbar fuer manuelle Uebersetzungen oder Korrekturen.",
         "btn.save_edit": "Aenderung speichern",
         "btn.reset_edit": "Manuelle Aenderung zuruecksetzen",
@@ -145,8 +169,18 @@ STRINGS = {
         "project.none": "Kein Projekt geladen",
         "project.info": "{name} | {dirty}",
         "progress.none": "Noch kein Katalog geladen.",
-        "progress.text": "{percent}% | {done}/{total} Eintraege bereits verfuegbar oder automatisch uebernehmbar | {skipped} uebersprungen",
-        "progress.legend": "Gruen = uebersetzt oder automatisch uebernehmbar | Gelb = bewusst uebersprungen",
+        "progress.text": "{percent}% | {done}/{total} Eintraege abgedeckt | {localized} bereits im Spiel uebersetzt | {available} sofort anwendbar | {skipped} uebersprungen",
+        "progress.legend": "Lila = bereits im Spiel uebersetzt | Gruen = sofort anwendbar | Gelb = bewusst uebersprungen",
+        "apply.run.idle": "Bereit. Noch keine laufende Uebersetzung.",
+        "apply.run.resume_available": "Fortsetzung verfuegbar: {done}/{total} DLLs abgeschlossen.",
+        "apply.run.running": "Laufend: {done}/{total} DLLs abgeschlossen.",
+        "apply.run.completed": "Abgeschlossen: {done}/{total} DLLs verarbeitet.",
+        "apply.run.failed": "Abgebrochen bei {dll}. Fortschritt wurde gespeichert und kann spaeter fortgesetzt werden.",
+        "apply.run.current_dll": "Aktuelle DLL: {dll} ({action})",
+        "apply.run.current_lines": "Aktuelle Eintraege:\n{lines}",
+        "apply.run.copy": "komplett ersetzen",
+        "apply.run.patch": "patchen",
+        "apply.run.none": "Noch keine Eintraege aktiv.",
         "project.saved": "gespeichert",
         "project.unsaved": "nicht gespeichert",
         "plan.action.full": "Ziel-DLL komplett kopieren",
@@ -188,6 +222,7 @@ STRINGS = {
         "status.toolchain_started": "Toolchain-Installer gestartet.",
         "status.terminology_opened": "Terminologie geoeffnet: {path}",
         "status.terminology_saved": "Terminologie-Mapping gespeichert: {source} -> {target}",
+        "status.pattern_saved": "Pattern gespeichert: {source} -> {target}",
         "status.term_source_selected": "Quellbegriff aus Auswahl uebernommen.",
         "status.term_target_selected": "Zielbegriff aus Auswahl uebernommen.",
         "status.update_check_started": "Update-Pruefung gestartet.",
@@ -199,7 +234,7 @@ STRINGS = {
         "error.load_first": "Bitte zuerst eine Installation laden.",
         "error.compare_first": "Bitte zuerst mit der Referenzinstallation vergleichen.",
         "error.toolchain_missing": "Keine Resource-Toolchain gefunden.\nBitte zuerst 'Toolchain installieren' ausfuehren.",
-        "error.no_apply_units": "Keine automatisch oder manuell uebersetzbaren Eintraege in der aktuellen Ansicht.",
+        "error.no_apply_units": "Im aktuellen Projekt gibt es keine automatisch oder manuell anwendbaren Eintraege.",
         "error.export_failed": "JSON-Export fehlgeschlagen:\n{error}",
         "error.export_mod_only_failed": "Export offener Eintraege fehlgeschlagen:\n{error}",
         "error.import_failed": "Import fehlgeschlagen:\n{error}",
@@ -210,7 +245,9 @@ STRINGS = {
         "error.file_assoc_failed": "Dateizuordnung konnte nicht eingerichtet werden:\n{error}",
         "error.terminology_open_failed": "Terminologie-Datei konnte nicht geoeffnet werden:\n{error}",
         "error.term_mapping_empty": "Quell- und Zielbegriff muessen ausgefuellt sein.",
+        "error.pattern_mapping_empty": "Pattern-Quelle und Pattern-Ziel muessen ausgefuellt sein.",
         "error.term_mapping_save_failed": "Terminologie-Mapping konnte nicht gespeichert werden:\n{error}",
+        "error.pattern_mapping_save_failed": "Pattern konnte nicht gespeichert werden:\n{error}",
         "error.update_check_failed": "Update-Pruefung fehlgeschlagen:\n{error}",
         "dialog.export_visible": "Sichtbaren Datensatz exportieren",
         "dialog.project_save": "Projekt speichern",
@@ -220,6 +257,7 @@ STRINGS = {
         "progress.compare": "Referenzinstallation wird verglichen...",
         "progress.export_visible": "Sichtbare Eintraege werden exportiert...",
         "progress.export_open": "Offene Eintraege werden exportiert...",
+        "progress.export_long_open": "Lange offene Texte werden exportiert...",
         "progress.import_translation": "Uebersetzungsdatei wird importiert...",
         "progress.save_project": "Projekt wird gespeichert...",
         "progress.load_project": "Projekt wird geladen...",
@@ -231,7 +269,8 @@ STRINGS = {
         "dialog.rebuild_title": "Projekt neu aufbauen",
         "dialog.rebuild_message": "Das Projekt wird nur aus den aktuellen Spieldaten neu aufgebaut.\n\nManuelle Uebersetzungen, importierte Aenderungen und andere nicht aus dem Spiel geladene Projektanpassungen gehen dabei verloren.\n\nFortfahren?",
         "dialog.apply_title": "Uebersetzungen anwenden",
-        "dialog.apply_confirm": "Es werden {count} Eintraege ersetzt. Vorher wird ein Backup angelegt.\n\nAbdeckung aktuell: {covered_percent}% ({covered}/{total} Eintraege sind bereits gruen oder gelb)\n\nFortfahren?",
+        "dialog.apply_confirm": "Es werden {count} Eintraege ersetzt. Vorher wird ein Backup angelegt.\n\nAbdeckung aktuell: {covered_percent}% ({covered}/{total} Eintraege sind bereits lila, gruen oder gelb)\n\nFortfahren?",
+        "dialog.apply_confirm_resume": "Es werden {count} Eintraege ersetzt. Vorher wird ein Backup angelegt oder eine vorhandene Sitzung fortgesetzt.\n\nAbdeckung aktuell: {covered_percent}% ({covered}/{total} Eintraege sind bereits lila, gruen oder gelb)\n\nEs kann bei DLL {next_dll} weitergemacht werden. Bereits fertig: {done}/{dll_total} DLLs.\n\nFortfahren?",
         "dialog.apply_preview": "Anwenden-Vorschau",
         "dialog.apply_progress_title": "Uebersetzungen anwenden",
         "dialog.apply_progress_copy": "Bearbeite {current}/{total}: {dll} wird komplett ersetzt...",
@@ -276,6 +315,8 @@ STRINGS = {
         "status.manual_translation": "Manuell uebersetzt",
         "status.mod_only": "Nur Mod-Inhalt",
         "status.export_mod_only": "{exported} offene Eintraege exportiert | {skipped} uebersprungen | Glossar {glossary}",
+        "status.export_long_open": "{exported} lange offene Texte exportiert | {skipped} uebersprungen | Glossar {glossary}",
+        "error.export_long_open_failed": "Export langer offener Texte fehlgeschlagen:\n{error}",
         "yes": "ja",
         "no": "nein",
     },
@@ -284,6 +325,7 @@ STRINGS = {
         "group.installs": "Installs",
         "group.workflow": "Workflow",
         "group.main_actions": "Import / Export for External Translation",
+        "group.apply_execution": "Translation Run",
         "group.filters": "Filters",
         "group.dll_analysis": "DLL Analysis",
         "group.project": "Project Status",
@@ -300,6 +342,7 @@ STRINGS = {
         "btn.compare": "Compare with reference",
         "btn.export_visible": "Export visible JSON",
         "btn.export_mod_only": "Export open entries",
+        "btn.export_long_open": "Export long open texts",
         "btn.import_exchange": "Import translation",
         "btn.apply_target": "Run translation",
         "btn.install_toolchain": "Install toolchain",
@@ -352,10 +395,21 @@ STRINGS = {
         "editor.missing": "Missing translations: {count}",
         "editor.missing_detail": "Open entries without manual translation: {count}",
         "group.terminology_map": "Terminology Mapping",
+        "group.terminology_manage": "Terminology and Pattern Management",
         "label.term_source": "Source term",
         "label.term_target": "Target term",
+        "label.pattern_source": "Pattern source",
+        "label.pattern_target": "Pattern target",
         "btn.term_from_selection": "Use selection",
         "btn.term_save": "Save mapping",
+        "btn.pattern_save": "Save pattern",
+        "btn.terminology_reload": "Reload lists",
+        "table.terms.section": "Section",
+        "table.terms.source": "Source",
+        "table.terms.target": "Target",
+        "table.patterns.section": "Section",
+        "table.patterns.source": "Pattern",
+        "table.patterns.target": "Replacement",
         "preview.edit_hint": "Directly editable for manual translations or corrections.",
         "btn.save_edit": "Save edit",
         "btn.reset_edit": "Reset manual edit",
@@ -366,8 +420,18 @@ STRINGS = {
         "project.none": "No project loaded",
         "project.info": "{name} | {dirty}",
         "progress.none": "No catalog loaded yet.",
-        "progress.text": "{percent}% | {done}/{total} entries already available or automatically transferable | {skipped} skipped",
-        "progress.legend": "Green = translated or auto-transferable | Yellow = intentionally skipped",
+        "progress.text": "{percent}% | {done}/{total} entries covered | {localized} already translated in-game | {available} ready to apply | {skipped} skipped",
+        "progress.legend": "Purple = already translated in-game | Green = ready to apply | Yellow = intentionally skipped",
+        "apply.run.idle": "Ready. No translation run is active.",
+        "apply.run.resume_available": "Resume available: {done}/{total} DLLs already completed.",
+        "apply.run.running": "Running: {done}/{total} DLLs completed.",
+        "apply.run.completed": "Completed: {done}/{total} DLLs processed.",
+        "apply.run.failed": "Stopped at {dll}. Progress was saved and can be resumed later.",
+        "apply.run.current_dll": "Current DLL: {dll} ({action})",
+        "apply.run.current_lines": "Current entries:\n{lines}",
+        "apply.run.copy": "full replace",
+        "apply.run.patch": "patch",
+        "apply.run.none": "No active entries yet.",
         "project.saved": "saved",
         "project.unsaved": "unsaved",
         "plan.action.full": "copy target DLL",
@@ -409,6 +473,7 @@ STRINGS = {
         "status.toolchain_started": "Toolchain installer started.",
         "status.terminology_opened": "Opened terminology: {path}",
         "status.terminology_saved": "Terminology mapping saved: {source} -> {target}",
+        "status.pattern_saved": "Pattern saved: {source} -> {target}",
         "status.term_source_selected": "Source term copied from selection.",
         "status.term_target_selected": "Target term copied from selection.",
         "status.update_check_started": "Started update check.",
@@ -420,7 +485,7 @@ STRINGS = {
         "error.load_first": "Load an install first.",
         "error.compare_first": "Compare against the reference install first.",
         "error.toolchain_missing": "No resource toolchain found.\nRun 'Install toolchain' first.",
-        "error.no_apply_units": "No automatically or manually translatable entries are visible in the current view.",
+        "error.no_apply_units": "There are no automatically or manually applicable entries in the current project.",
         "error.export_failed": "JSON export failed:\n{error}",
         "error.export_mod_only_failed": "Open entry export failed:\n{error}",
         "error.import_failed": "Import failed:\n{error}",
@@ -431,7 +496,9 @@ STRINGS = {
         "error.file_assoc_failed": "File association could not be configured:\n{error}",
         "error.terminology_open_failed": "Terminology file could not be opened:\n{error}",
         "error.term_mapping_empty": "Source term and target term must be filled in.",
+        "error.pattern_mapping_empty": "Pattern source and target must be filled in.",
         "error.term_mapping_save_failed": "Terminology mapping could not be saved:\n{error}",
+        "error.pattern_mapping_save_failed": "Pattern could not be saved:\n{error}",
         "error.update_check_failed": "Update check failed:\n{error}",
         "dialog.export_visible": "Export visible dataset",
         "dialog.project_save": "Save project",
@@ -441,6 +508,7 @@ STRINGS = {
         "progress.compare": "Comparing reference install...",
         "progress.export_visible": "Exporting visible entries...",
         "progress.export_open": "Exporting open entries...",
+        "progress.export_long_open": "Exporting long open texts...",
         "progress.import_translation": "Importing translation file...",
         "progress.save_project": "Saving project...",
         "progress.load_project": "Loading project...",
@@ -452,7 +520,8 @@ STRINGS = {
         "dialog.rebuild_title": "Rebuild project",
         "dialog.rebuild_message": "The project will be rebuilt only from the current game data.\n\nManual translations, imported changes, and other project edits that do not come from the game data will be lost.\n\nContinue?",
         "dialog.apply_title": "Apply translations",
-        "dialog.apply_confirm": "{count} entries will be replaced. A backup is created first.\n\nCurrent coverage: {covered_percent}% ({covered}/{total} entries are already green or yellow)\n\nContinue?",
+        "dialog.apply_confirm": "{count} entries will be replaced. A backup is created first.\n\nCurrent coverage: {covered_percent}% ({covered}/{total} entries are already purple, green, or yellow)\n\nContinue?",
+        "dialog.apply_confirm_resume": "{count} entries will be replaced. A backup is created first or an existing session will be resumed.\n\nCurrent coverage: {covered_percent}% ({covered}/{total} entries are already purple, green, or yellow)\n\nIt can continue at DLL {next_dll}. Already completed: {done}/{dll_total} DLLs.\n\nContinue?",
         "dialog.apply_preview": "Apply preview",
         "dialog.apply_progress_title": "Apply translations",
         "dialog.apply_progress_copy": "Processing {current}/{total}: replacing {dll}...",
@@ -497,6 +566,8 @@ STRINGS = {
         "status.manual_translation": "Manually translated",
         "status.mod_only": "Mod-only content",
         "status.export_mod_only": "{exported} open entries exported | {skipped} skipped | glossary {glossary}",
+        "status.export_long_open": "{exported} long open texts exported | {skipped} skipped | glossary {glossary}",
+        "error.export_long_open_failed": "Long open text export failed:\n{error}",
         "yes": "yes",
         "no": "no",
     },
@@ -707,13 +778,15 @@ class SegmentedProgressBar(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._total = 0
+        self._localized = 0
         self._done = 0
         self._skipped = 0
         self._segments = 20
         self.setMinimumHeight(24)
 
-    def set_progress(self, *, total: int, done: int, skipped: int) -> None:
+    def set_progress(self, *, total: int, localized: int, done: int, skipped: int) -> None:
         self._total = max(0, int(total))
+        self._localized = max(0, int(localized))
         self._done = max(0, int(done))
         self._skipped = max(0, int(skipped))
         self.update()
@@ -728,6 +801,7 @@ class SegmentedProgressBar(QWidget):
 
         painter.fillRect(rect, QColor("#d8d8d8"))
         total = self._total if self._total > 0 else 1
+        localized_ratio = min(1.0, self._localized / total)
         covered_ratio = min(1.0, (self._done + self._skipped) / total)
         done_ratio = min(covered_ratio, self._done / total)
         segment_gap = 2
@@ -738,7 +812,9 @@ class SegmentedProgressBar(QWidget):
             segment_rect = rect.adjusted(x - rect.x(), 0, -(rect.right() - (x + width - 1)), 0)
             segment_start = index / self._segments
             segment_end = (index + 1) / self._segments
-            if segment_end <= done_ratio:
+            if segment_end <= localized_ratio:
+                color = QColor("#A855F7")
+            elif segment_end <= done_ratio:
                 color = QColor("#4CAF50")
             elif segment_end <= covered_ratio:
                 color = QColor("#E3B341")
@@ -773,6 +849,16 @@ class TranslatorMainWindow(QMainWindow):
         self._visible_units: list[TranslationUnit] = []
         self._project_path: Path | None = None
         self._saved_project_signature: str | None = None
+        self._apply_thread: threading.Thread | None = None
+        self._apply_queue: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._apply_poll_timer = QTimer(self)
+        self._apply_poll_timer.timeout.connect(self._poll_apply_queue)
+        self._search_debounce_timer = QTimer(self)
+        self._search_debounce_timer.setSingleShot(True)
+        self._search_debounce_timer.timeout.connect(self._refresh_table)
+        self._apply_active = False
+        self._apply_report: ApplyReport | None = None
+        self._apply_error: str | None = None
         self._setup_ui()
         self._apply_editor_default_filters(force=True)
         startup_project = getattr(self._config, "startup_project_path", None)
@@ -887,6 +973,178 @@ class TranslatorMainWindow(QMainWindow):
         self.editor_missing_label.setText(self._tr("editor.missing").format(count=count))
         self.editor_missing_detail_label.setText(self._tr("editor.missing_detail").format(count=count))
 
+    def _apply_candidate_units(self) -> list[TranslationUnit]:
+        catalog = self._paired_catalog
+        if catalog is None:
+            return []
+        return [
+            unit
+            for unit in catalog.units
+            if unit.status in {RelocalizationStatus.AUTO_RELOCALIZE, RelocalizationStatus.MANUAL_TRANSLATION}
+        ]
+
+    def _set_apply_buttons_enabled(self, enabled: bool) -> None:
+        for name in ("primary_apply_button", "main_apply_button", "apply_button"):
+            button = getattr(self, name, None)
+            if button is not None:
+                button.setEnabled(enabled)
+
+    def _refresh_apply_resume_status(self) -> None:
+        if not hasattr(self, "apply_execution_status_label") or self._apply_active:
+            return
+        catalog = self._paired_catalog
+        units = self._apply_candidate_units()
+        session = self._writer.load_apply_session(catalog, units=units) if catalog is not None and units else None
+        if session is not None and session.pending_dlls:
+            self.apply_execution_status_label.setText(
+                self._tr("apply.run.resume_available").format(
+                    done=len(session.completed_dlls),
+                    total=session.total_dlls,
+                )
+            )
+            next_dll = session.pending_dlls[0]
+            action = self._tr("apply.run.patch")
+            self.apply_execution_current_label.setText(
+                self._tr("apply.run.current_dll").format(dll=next_dll, action=action)
+            )
+            percent = int((len(session.completed_dlls) / max(1, session.total_dlls)) * 100)
+            self.apply_execution_progress_bar.setValue(percent)
+            if session.last_error:
+                self.apply_execution_lines.setPlainText(session.last_error)
+            else:
+                self.apply_execution_lines.setPlainText("")
+        else:
+            self.apply_execution_status_label.setText(self._tr("apply.run.idle"))
+            self.apply_execution_current_label.setText(self._tr("apply.run.none"))
+            self.apply_execution_progress_bar.setValue(0)
+            self.apply_execution_lines.setPlainText("")
+
+    def _start_apply_worker(self, catalog: ResourceCatalog, units: list[TranslationUnit]) -> None:
+        session = self._writer.load_apply_session(catalog, units=units)
+        total_dlls = max(1, len({unit.source.dll_name.lower() for unit in units}))
+        completed_dlls = len(session.completed_dlls) if session is not None else 0
+        self._apply_active = True
+        self._apply_report = None
+        self._apply_error = None
+        self._set_apply_buttons_enabled(False)
+        self.apply_execution_progress_bar.setValue(int((completed_dlls / total_dlls) * 100))
+        self.apply_execution_status_label.setText(self._tr("apply.run.running").format(done=completed_dlls, total=total_dlls))
+        self.apply_execution_current_label.setText(self._tr("apply.run.none"))
+        self.apply_execution_lines.setPlainText("")
+        while not self._apply_queue.empty():
+            try:
+                self._apply_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        def _worker() -> None:
+            try:
+                report = self._writer.apply_german_relocalization(
+                    catalog,
+                    units=units,
+                    dll_plans=self._dll_plans,
+                    progress_callback=lambda event: self._apply_queue.put({"type": "progress", "event": event}),
+                )
+                self._apply_queue.put({"type": "success", "report": report})
+            except Exception as exc:
+                self._apply_queue.put({"type": "error", "error": str(exc)})
+            finally:
+                self._apply_queue.put({"type": "finished"})
+
+        self._apply_thread = threading.Thread(target=_worker, daemon=True)
+        self._apply_thread.start()
+        self._apply_poll_timer.start(100)
+
+    def _poll_apply_queue(self) -> None:
+        saw_finished = False
+        while True:
+            try:
+                payload = self._apply_queue.get_nowait()
+            except queue.Empty:
+                break
+            kind = str(payload.get("type", "") or "")
+            if kind == "progress":
+                self._handle_apply_progress_event(payload.get("event", {}))
+            elif kind == "success":
+                self._apply_report = payload.get("report")
+            elif kind == "error":
+                self._apply_error = str(payload.get("error", "") or "")
+            elif kind == "finished":
+                saw_finished = True
+
+        if not saw_finished:
+            return
+
+        if self._apply_thread is not None:
+            self._apply_thread.join(timeout=0.1)
+        self._apply_poll_timer.stop()
+        self._apply_active = False
+        self._apply_thread = None
+        self._set_apply_buttons_enabled(True)
+
+        if self._apply_error:
+            failed_dll = "?"
+            catalog = self._paired_catalog
+            units = self._apply_candidate_units()
+            session = self._writer.load_apply_session(catalog, units=units) if catalog is not None and units else None
+            if session is not None and session.failed_dll:
+                failed_dll = session.failed_dll
+            self.apply_execution_status_label.setText(self._tr("apply.run.failed").format(dll=failed_dll))
+            self._show_error(self._tr("error.apply_failed").format(error=self._apply_error))
+            self._refresh_apply_resume_status()
+            return
+
+        report = self._apply_report
+        if report is None:
+            self._refresh_apply_resume_status()
+            return
+        total_dlls = max(1, len({unit.source.dll_name.lower() for unit in self._apply_candidate_units()}))
+        self.apply_execution_status_label.setText(
+            self._tr("apply.run.completed").format(done=total_dlls, total=total_dlls)
+        )
+        self.apply_execution_progress_bar.setValue(100)
+        QMessageBox.information(
+            self,
+            self._tr("dialog.apply_title"),
+            self._tr("dialog.apply_success").format(
+                count=report.replaced_units,
+                dlls=len(report.written_files),
+                backup=report.backup_dir,
+            ),
+        )
+        if self._lang == "en":
+            self._set_status(f"Applied {self._target_lang_code}: {report.replaced_units} entries, backup at {report.backup_dir}")
+        else:
+            self._set_status(f"{self._target_lang_code} angewendet: {report.replaced_units} Eintraege, Backup unter {report.backup_dir}")
+        self._load_source_catalog()
+        self._load_compare_catalog()
+
+    def _handle_apply_progress_event(self, event: Any) -> None:
+        if not isinstance(event, dict):
+            return
+        total = max(1, int(event.get("total", 1) or 1))
+        current = max(1, int(event.get("current", 1) or 1))
+        completed = max(0, int(event.get("completed", 0) or 0))
+        phase = str(event.get("phase", "") or "")
+        dll_name = str(event.get("dll_name", "") or "")
+        action_key = "apply.run.copy" if str(event.get("action", "") or "") == "copy" else "apply.run.patch"
+        display_done = completed if phase == "done" else min(total, completed + 1)
+        percent = int((display_done / total) * 100)
+        self.apply_execution_progress_bar.setValue(percent)
+        self.apply_execution_status_label.setText(
+            self._tr("apply.run.running").format(done=display_done, total=total)
+        )
+        self.apply_execution_current_label.setText(
+            self._tr("apply.run.current_dll").format(dll=dll_name, action=self._tr(action_key))
+        )
+        preview_lines = list(event.get("preview_lines", []) or [])
+        if preview_lines:
+            self.apply_execution_lines.setPlainText(
+                self._tr("apply.run.current_lines").format(lines="\n".join(preview_lines))
+            )
+        else:
+            self.apply_execution_lines.setPlainText("")
+
     def _load_persistent_settings(self) -> None:
         saved_language = str(self._settings.value("ui/language", self._lang) or self._lang).lower()
         saved_theme = str(self._settings.value("ui/theme", self._theme) or self._theme).lower()
@@ -991,6 +1249,10 @@ class TranslatorMainWindow(QMainWindow):
         act_export_mod_only.triggered.connect(self._export_mod_only_exchange)
         file_menu.addAction(act_export_mod_only)
 
+        act_export_long_open = QAction(self._tr("btn.export_long_open"), self)
+        act_export_long_open.triggered.connect(self._export_long_open_exchange)
+        file_menu.addAction(act_export_long_open)
+
         act_import_exchange = QAction(self._tr("btn.import_exchange"), self)
         act_import_exchange.triggered.connect(self._import_translation_exchange)
         file_menu.addAction(act_import_exchange)
@@ -1079,6 +1341,8 @@ class TranslatorMainWindow(QMainWindow):
         self.export_button.clicked.connect(self._export_visible_json)
         self.export_mod_only_button = QPushButton(self._tr("btn.export_mod_only"))
         self.export_mod_only_button.clicked.connect(self._export_mod_only_exchange)
+        self.export_long_open_button = QPushButton(self._tr("btn.export_long_open"))
+        self.export_long_open_button.clicked.connect(self._export_long_open_exchange)
         self.import_exchange_button = QPushButton(self._tr("btn.import_exchange"))
         self.import_exchange_button.clicked.connect(self._import_translation_exchange)
         self.apply_button = QPushButton(self._tr("btn.apply_target"))
@@ -1110,6 +1374,7 @@ class TranslatorMainWindow(QMainWindow):
         actions.addStretch(1)
         actions.addWidget(self.toolchain_button)
         actions.addWidget(self.import_exchange_button)
+        actions.addWidget(self.export_long_open_button)
         actions.addWidget(self.export_mod_only_button)
         actions.addWidget(self.export_button)
         grid.addLayout(actions, 3, 0, 1, 6)
@@ -1155,6 +1420,7 @@ class TranslatorMainWindow(QMainWindow):
         layout.addWidget(self._build_paths_group())
         layout.addWidget(self._build_progress_group())
         layout.addWidget(self._build_main_workflow_page(), 1)
+        layout.addWidget(self._build_apply_execution_group())
         self.primary_apply_button = QPushButton(self._tr("btn.apply_target"))
         self.primary_apply_button.clicked.connect(self._apply_target_to_install)
         self.primary_apply_button.setMinimumHeight(56)
@@ -1184,6 +1450,28 @@ class TranslatorMainWindow(QMainWindow):
         layout.addWidget(self.primary_apply_button)
         return page
 
+    def _build_apply_execution_group(self) -> QGroupBox:
+        self.apply_execution_group = QGroupBox(self._tr("group.apply_execution"))
+        layout = QVBoxLayout(self.apply_execution_group)
+        self.apply_execution_status_label = QLabel(self._tr("apply.run.idle"))
+        self.apply_execution_status_label.setWordWrap(True)
+        self.apply_execution_progress_bar = QProgressBar()
+        self.apply_execution_progress_bar.setMinimum(0)
+        self.apply_execution_progress_bar.setMaximum(100)
+        self.apply_execution_progress_bar.setValue(0)
+        self.apply_execution_current_label = QLabel(self._tr("apply.run.none"))
+        self.apply_execution_current_label.setWordWrap(True)
+        self.apply_execution_lines = QTextEdit()
+        self.apply_execution_lines.setReadOnly(True)
+        self.apply_execution_lines.setMinimumHeight(130)
+        self.apply_execution_lines.setPlaceholderText(self._tr("apply.run.none"))
+        layout.addWidget(self.apply_execution_status_label)
+        layout.addWidget(self.apply_execution_progress_bar)
+        layout.addWidget(self.apply_execution_current_label)
+        layout.addWidget(self.apply_execution_lines)
+        self._refresh_apply_resume_status()
+        return self.apply_execution_group
+
     def _build_editor_workspace_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -1201,11 +1489,14 @@ class TranslatorMainWindow(QMainWindow):
         action_row = QHBoxLayout()
         self.main_export_button = QPushButton(self._tr("btn.export_mod_only"))
         self.main_export_button.clicked.connect(self._export_mod_only_exchange)
+        self.main_long_export_button = QPushButton(self._tr("btn.export_long_open"))
+        self.main_long_export_button.clicked.connect(self._export_long_open_exchange)
         self.main_import_button = QPushButton(self._tr("btn.import_exchange"))
         self.main_import_button.clicked.connect(self._import_translation_exchange)
         self.main_apply_button = QPushButton(self._tr("btn.apply_target"))
         self.main_apply_button.clicked.connect(self._apply_target_to_install)
         action_row.addWidget(self.main_export_button)
+        action_row.addWidget(self.main_long_export_button)
         action_row.addWidget(self.main_import_button)
         action_row.addStretch(1)
         group_layout.addLayout(action_row)
@@ -1229,6 +1520,7 @@ class TranslatorMainWindow(QMainWindow):
         layout.addWidget(self.editor_missing_label)
         layout.addWidget(self.editor_missing_detail_label)
         layout.addWidget(self._build_terminology_mapping_group())
+        layout.addWidget(self._build_terminology_management_group())
         layout.addWidget(self._build_filters_group())
         layout.addWidget(self._build_main_splitter(), 1)
         self._refresh_editor_status()
@@ -1252,6 +1544,43 @@ class TranslatorMainWindow(QMainWindow):
         layout.addWidget(self.term_target_edit, 1, 1)
         layout.addWidget(self.term_save_button, 1, 2)
         return self.terminology_map_group
+
+    def _build_terminology_management_group(self) -> QGroupBox:
+        self.terminology_manage_group = QGroupBox(self._tr("group.terminology_manage"))
+        layout = QGridLayout(self.terminology_manage_group)
+        self.pattern_source_label = QLabel(self._tr("label.pattern_source"))
+        self.pattern_target_label = QLabel(self._tr("label.pattern_target"))
+        self.pattern_source_edit = QLineEdit()
+        self.pattern_target_edit = QLineEdit()
+        self.pattern_save_button = QPushButton(self._tr("btn.pattern_save"))
+        self.pattern_save_button.clicked.connect(self._save_pattern_mapping)
+        self.terminology_reload_button = QPushButton(self._tr("btn.terminology_reload"))
+        self.terminology_reload_button.clicked.connect(self._refresh_terminology_tables)
+
+        self.term_table = QTableWidget(0, 3)
+        self.term_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.term_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.term_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.term_table.verticalHeader().setVisible(False)
+        self.term_table.itemSelectionChanged.connect(self._use_selected_term_row)
+
+        self.pattern_table = QTableWidget(0, 3)
+        self.pattern_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.pattern_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.pattern_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.pattern_table.verticalHeader().setVisible(False)
+        self.pattern_table.itemSelectionChanged.connect(self._use_selected_pattern_row)
+
+        layout.addWidget(self.pattern_source_label, 0, 0)
+        layout.addWidget(self.pattern_source_edit, 0, 1)
+        layout.addWidget(self.terminology_reload_button, 0, 2)
+        layout.addWidget(self.pattern_target_label, 1, 0)
+        layout.addWidget(self.pattern_target_edit, 1, 1)
+        layout.addWidget(self.pattern_save_button, 1, 2)
+        layout.addWidget(self.term_table, 2, 0, 1, 3)
+        layout.addWidget(self.pattern_table, 3, 0, 1, 3)
+        self._refresh_terminology_tables()
+        return self.terminology_manage_group
 
     def _build_footer(self) -> QWidget:
         footer = QWidget()
@@ -1307,7 +1636,7 @@ class TranslatorMainWindow(QMainWindow):
 
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText(self._tr("search.placeholder"))
-        self.search_edit.textChanged.connect(self._refresh_table)
+        self.search_edit.textChanged.connect(self._schedule_search_refresh)
 
         self.kind_label = QLabel(self._tr("label.kind"))
         self.status_label = QLabel(self._tr("label.status"))
@@ -1432,6 +1761,7 @@ class TranslatorMainWindow(QMainWindow):
         self._set_language_combo_value(self.target_lang_edit, self._target_lang_code)
         clear_term_map_cache()
         self._save_persistent_settings()
+        self._refresh_terminology_tables()
         self._refresh_footer()
 
     def _load_source_catalog(self) -> None:
@@ -1572,30 +1902,40 @@ class TranslatorMainWindow(QMainWindow):
             return 0
         return sum(1 for unit in catalog.units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION)
 
-    def _translation_progress(self) -> tuple[int, int, int, int, int]:
+    def _translation_progress(self) -> tuple[int, int, int, int, int, int]:
         catalog = self._current_catalog()
         if catalog is None:
-            return (0, 0, 0, 0, 0)
+            return (0, 0, 0, 0, 0, 0)
         progress = calculate_translation_progress(catalog)
-        return (progress.done, progress.skipped, progress.total, progress.done_percent, progress.covered_percent)
+        return (
+            progress.localized,
+            progress.done,
+            progress.skipped,
+            progress.total,
+            progress.done_percent,
+            progress.covered_percent,
+        )
 
     def _update_action_state(self) -> None:
         has_source = self._source_catalog is not None
         has_comparison = self._paired_catalog is not None
         has_catalog = self._current_catalog() is not None
         has_toolchain = self._writer.has_toolchain()
+        can_apply = has_comparison and has_toolchain and not self._apply_active
         if hasattr(self, "compare_button"):
             self.compare_button.setEnabled(has_source)
             self.export_button.setEnabled(has_catalog)
             self.export_mod_only_button.setEnabled(has_catalog)
+            self.export_long_open_button.setEnabled(has_catalog)
             self.import_exchange_button.setEnabled(has_catalog)
-            self.apply_button.setEnabled(has_comparison and has_toolchain)
+            self.apply_button.setEnabled(can_apply)
         if hasattr(self, "primary_apply_button"):
-            self.primary_apply_button.setEnabled(has_comparison and has_toolchain)
+            self.primary_apply_button.setEnabled(can_apply)
         if hasattr(self, "main_export_button"):
             self.main_export_button.setEnabled(has_catalog)
+            self.main_long_export_button.setEnabled(has_catalog)
             self.main_import_button.setEnabled(has_catalog)
-            self.main_apply_button.setEnabled(has_comparison and has_toolchain)
+            self.main_apply_button.setEnabled(can_apply)
         if hasattr(self, "root_tabs"):
             self.root_tabs.setTabEnabled(0, True)
             self.root_tabs.setTabEnabled(1, has_catalog)
@@ -1641,6 +1981,7 @@ class TranslatorMainWindow(QMainWindow):
             self._refresh_project_status()
             self._refresh_progress()
             self._refresh_editor_status()
+            self._refresh_apply_resume_status()
             return
 
         units = list(catalog.units)
@@ -1656,7 +1997,7 @@ class TranslatorMainWindow(QMainWindow):
             units = [unit for unit in units if unit.is_changed]
 
         search_value = self.search_edit.text().strip().lower()
-        if search_value:
+        if search_value and len(search_value) >= 2:
             units = [unit for unit in units if search_value in unit.source_text.lower() or search_value in unit.replacement_text.lower()]
 
         self._visible_units = units
@@ -1685,6 +2026,17 @@ class TranslatorMainWindow(QMainWindow):
         self._refresh_project_status()
         self._refresh_progress()
         self._refresh_editor_status()
+        self._refresh_apply_resume_status()
+
+    def _schedule_search_refresh(self) -> None:
+        search_value = self.search_edit.text().strip()
+        if len(search_value) == 0:
+            self._search_debounce_timer.stop()
+            self._refresh_table()
+            return
+        if len(search_value) < 2:
+            return
+        self._search_debounce_timer.start(400)
 
     def _refresh_dll_plan_table(self) -> None:
         self.dll_plan_table.setRowCount(len(self._dll_plans))
@@ -1829,7 +2181,80 @@ class TranslatorMainWindow(QMainWindow):
         except Exception as exc:
             self._show_error(self._tr("error.term_mapping_save_failed").format(error=exc))
             return
+        self._refresh_terminology_tables()
         self._set_status(self._tr("status.terminology_saved").format(source=source_term, target=target_term))
+
+    def _save_pattern_mapping(self) -> None:
+        source_text = self.pattern_source_edit.text().strip()
+        target_text = self.pattern_target_edit.text().strip()
+        if not source_text or not target_text:
+            self._show_error(self._tr("error.pattern_mapping_empty"))
+            return
+        try:
+            save_replacement_pattern(self._target_lang_code, source_text, target_text)
+        except Exception as exc:
+            self._show_error(self._tr("error.pattern_mapping_save_failed").format(error=exc))
+            return
+        self._refresh_terminology_tables()
+        self._set_status(self._tr("status.pattern_saved").format(source=source_text, target=target_text))
+
+    def _refresh_terminology_tables(self) -> None:
+        if not hasattr(self, "term_table"):
+            return
+        term_rows = list_terminology_entries(self._target_lang_code)
+        self.term_table.setRowCount(len(term_rows))
+        self.term_table.setHorizontalHeaderLabels(
+            [
+                self._tr("table.terms.section"),
+                self._tr("table.terms.source"),
+                self._tr("table.terms.target"),
+            ]
+        )
+        for row, (section, source, target) in enumerate(term_rows):
+            for col, value in enumerate((section, source, target)):
+                self.term_table.setItem(row, col, QTableWidgetItem(value))
+        self.term_table.resizeColumnsToContents()
+
+        pattern_rows = list_pattern_entries(self._target_lang_code)
+        self.pattern_table.setRowCount(len(pattern_rows))
+        self.pattern_table.setHorizontalHeaderLabels(
+            [
+                self._tr("table.patterns.section"),
+                self._tr("table.patterns.source"),
+                self._tr("table.patterns.target"),
+            ]
+        )
+        for row, pattern in enumerate(pattern_rows):
+            values = (pattern.section, pattern.source_text, pattern.target_text)
+            for col, value in enumerate(values):
+                self.pattern_table.setItem(row, col, QTableWidgetItem(value))
+        self.pattern_table.resizeColumnsToContents()
+
+    def _use_selected_term_row(self) -> None:
+        if not hasattr(self, "term_table"):
+            return
+        row = self.term_table.currentRow()
+        if row < 0:
+            return
+        source_item = self.term_table.item(row, 1)
+        target_item = self.term_table.item(row, 2)
+        if source_item is not None:
+            self.term_source_edit.setText(source_item.text())
+        if target_item is not None:
+            self.term_target_edit.setText(target_item.text())
+
+    def _use_selected_pattern_row(self) -> None:
+        if not hasattr(self, "pattern_table"):
+            return
+        row = self.pattern_table.currentRow()
+        if row < 0:
+            return
+        source_item = self.pattern_table.item(row, 1)
+        target_item = self.pattern_table.item(row, 2)
+        if source_item is not None:
+            self.pattern_source_edit.setText(source_item.text())
+        if target_item is not None:
+            self.pattern_target_edit.setText(target_item.text())
 
     def _save_manual_edit(self) -> None:
         unit = self._selected_unit()
@@ -2152,6 +2577,37 @@ class TranslatorMainWindow(QMainWindow):
             + f": {output_path}"
         )
 
+    def _export_long_open_exchange(self) -> None:
+        catalog = self._current_catalog()
+        if catalog is None:
+            self._show_error(self._tr("error.load_first"))
+            return
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            self._tr("btn.export_long_open"),
+            str(Path.cwd() / "build" / "long-open-entries-exchange.json"),
+            "JSON Files (*.json)",
+        )
+        if not output_path:
+            return
+        try:
+            report = self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.export_long_open"),
+                lambda: export_long_open_exchange(catalog, Path(output_path), target_language=self._target_lang_code),
+            )
+        except Exception as exc:
+            self._show_error(self._tr("error.export_long_open_failed").format(error=exc))
+            return
+        self._set_status(
+            self._tr("status.export_long_open").format(
+                exported=report.exported_entries,
+                skipped=report.skipped_entries,
+                glossary=report.glossary_entries,
+            )
+            + f": {output_path}"
+        )
+
     def _import_translation_exchange(self) -> None:
         catalog = self._current_catalog()
         if catalog is None:
@@ -2187,6 +2643,8 @@ class TranslatorMainWindow(QMainWindow):
             self._set_status(f"{manual_count} manuelle Uebersetzungen geladen: {input_path}")
 
     def _apply_target_to_install(self) -> None:
+        if self._apply_active:
+            return
         catalog = self._paired_catalog
         if catalog is None:
             self._show_error(self._tr("error.compare_first"))
@@ -2196,83 +2654,40 @@ class TranslatorMainWindow(QMainWindow):
             return
         units = [
             unit
-            for unit in self._visible_units
+            for unit in catalog.units
             if unit.status in {RelocalizationStatus.AUTO_RELOCALIZE, RelocalizationStatus.MANUAL_TRANSLATION}
         ]
         if not units:
             self._show_error(self._tr("error.no_apply_units"))
             return
+        session = self._writer.load_apply_session(catalog, units=units)
         preview_box = QMessageBox(self)
         preview_box.setIcon(QMessageBox.Question)
         preview_box.setWindowTitle(self._tr("dialog.apply_preview"))
-        done, skipped, total, _percent, covered_percent = self._translation_progress()
-        preview_box.setText(
-            self._tr("dialog.apply_confirm").format(
-                count=len(units),
-                covered_percent=covered_percent,
-                covered=done + skipped,
-                total=total,
+        _localized, done, skipped, total, _percent, covered_percent = self._translation_progress()
+        confirm_key = "dialog.apply_confirm_resume" if session is not None and session.pending_dlls else "dialog.apply_confirm"
+        confirm_payload = {
+            "count": len(units),
+            "covered_percent": covered_percent,
+            "covered": done + skipped,
+            "total": total,
+        }
+        if session is not None and session.pending_dlls:
+            confirm_payload.update(
+                {
+                    "next_dll": session.pending_dlls[0],
+                    "done": len(session.completed_dlls),
+                    "dll_total": session.total_dlls,
+                }
             )
-        )
+        preview_box.setText(self._tr(confirm_key).format(**confirm_payload))
         preview_box.setDetailedText(self._build_apply_preview(units))
         preview_box.setStandardButtons(QMessageBox.Yes | QMessageBox.Cancel)
         preview_box.setDefaultButton(QMessageBox.Yes)
         reply = preview_box.exec()
         if reply != QMessageBox.Yes:
             return
-        try:
-            report: ApplyReport | None = None
-            dll_count = len({unit.source.dll_name.lower() for unit in units})
-            progress = QProgressDialog(self._tr("dialog.apply_progress_title"), "", 0, max(1, dll_count), self)
-            progress.setWindowTitle(self._tr("dialog.apply_progress_title"))
-            progress.setCancelButton(None)
-            progress.setMinimumDuration(0)
-            progress.setAutoClose(True)
-            progress.setAutoReset(True)
-            progress.setValue(0)
-            progress.show()
-
-            def _apply() -> None:
-                nonlocal report
-
-                def _update_progress(current: int, total: int, dll_name: str, action: str) -> None:
-                    key = "dialog.apply_progress_copy" if action == "copy" else "dialog.apply_progress_patch"
-                    progress.setMaximum(max(1, total))
-                    progress.setLabelText(
-                        self._tr(key).format(current=current, total=total, dll=dll_name)
-                    )
-                    progress.setValue(current - 1)
-                    QApplication.processEvents()
-
-                report = self._writer.apply_german_relocalization(
-                    catalog,
-                    units=units,
-                    dll_plans=self._dll_plans,
-                    progress_callback=_update_progress,
-                )
-
-            self._with_busy_cursor(_apply)
-            progress.setValue(progress.maximum())
-            QApplication.processEvents()
-            assert report is not None
-        except Exception as exc:
-            self._show_error(self._tr("error.apply_failed").format(error=exc))
-            return
-        QMessageBox.information(
-            self,
-            self._tr("dialog.apply_title"),
-            self._tr("dialog.apply_success").format(
-                count=report.replaced_units,
-                dlls=len(report.written_files),
-                backup=report.backup_dir,
-            ),
-        )
-        if self._lang == "en":
-            self._set_status(f"Applied {self._target_lang_code}: {report.replaced_units} entries, backup at {report.backup_dir}")
-        else:
-            self._set_status(f"{self._target_lang_code} angewendet: {report.replaced_units} Eintraege, Backup unter {report.backup_dir}")
-        self._load_source_catalog()
-        self._load_compare_catalog()
+        self._start_apply_worker(catalog, units)
 
     def _install_toolchain(self) -> None:
         try:
@@ -2475,14 +2890,20 @@ class TranslatorMainWindow(QMainWindow):
         self.paths_group.setTitle(self._tr("group.installs"))
         self.progress_group.setTitle(self._tr("group.progress"))
         self.main_actions_group.setTitle(self._tr("group.main_actions"))
+        self.apply_execution_group.setTitle(self._tr("group.apply_execution"))
         self.filters_group.setTitle(self._tr("group.filters"))
         self.dll_group.setTitle(self._tr("group.dll_analysis"))
         self.editor_help_label.setText(self._tr("editor.help"))
         self.terminology_map_group.setTitle(self._tr("group.terminology_map"))
+        self.terminology_manage_group.setTitle(self._tr("group.terminology_manage"))
         self.term_source_label.setText(self._tr("label.term_source"))
         self.term_target_label.setText(self._tr("label.term_target"))
+        self.pattern_source_label.setText(self._tr("label.pattern_source"))
+        self.pattern_target_label.setText(self._tr("label.pattern_target"))
         self.term_from_selection_button.setText(self._tr("btn.term_from_selection"))
         self.term_save_button.setText(self._tr("btn.term_save"))
+        self.pattern_save_button.setText(self._tr("btn.pattern_save"))
+        self.terminology_reload_button.setText(self._tr("btn.terminology_reload"))
         self.source_install_label.setText(self._tr("label.source_install"))
         self.target_install_label.setText(self._tr("label.target_install"))
         self.source_lang_label.setText(self._tr("label.source_language"))
@@ -2496,11 +2917,13 @@ class TranslatorMainWindow(QMainWindow):
         self.compare_button.setText(self._tr("btn.compare"))
         self.export_button.setText(self._tr("btn.export_visible"))
         self.export_mod_only_button.setText(self._tr("btn.export_mod_only"))
+        self.export_long_open_button.setText(self._tr("btn.export_long_open"))
         self.import_exchange_button.setText(self._tr("btn.import_exchange"))
         self.apply_button.setText(self._tr("btn.apply_target"))
         self.primary_apply_button.setText(self._tr("btn.apply_target"))
         self.toolchain_button.setText(self._tr("btn.install_toolchain"))
         self.main_export_button.setText(self._tr("btn.export_mod_only"))
+        self.main_long_export_button.setText(self._tr("btn.export_long_open"))
         self.main_import_button.setText(self._tr("btn.import_exchange"))
         self.kind_label.setText(self._tr("label.kind"))
         self.status_label.setText(self._tr("label.status"))
@@ -2528,6 +2951,8 @@ class TranslatorMainWindow(QMainWindow):
         self._refresh_project_status()
         self._refresh_progress()
         self._refresh_editor_status()
+        self._refresh_terminology_tables()
+        self._refresh_apply_resume_status()
         self._refresh_footer()
         self._update_action_state()
         self._set_status(self._tr("status.start"))
@@ -2569,13 +2994,20 @@ class TranslatorMainWindow(QMainWindow):
         self.setWindowTitle(f"{self._config.app_title} v{self._config.app_version} | {project_info}")
 
     def _refresh_progress(self) -> None:
-        done, skipped, total, percent, _covered_percent = self._translation_progress()
-        self.translation_progress_bar.set_progress(total=total, done=done, skipped=skipped)
+        localized, done, skipped, total, _percent, covered_percent = self._translation_progress()
+        self.translation_progress_bar.set_progress(total=total, localized=localized, done=done, skipped=skipped)
         if total == 0:
             self.translation_progress_label.setText(self._tr("progress.none"))
             return
         self.translation_progress_label.setText(
-            self._tr("progress.text").format(percent=percent, done=done, total=total, skipped=skipped)
+            self._tr("progress.text").format(
+                percent=covered_percent,
+                done=done + skipped,
+                total=total,
+                localized=localized,
+                available=max(0, done - localized),
+                skipped=skipped,
+            )
         )
 
     def _refresh_toolchain_label(self) -> None:

@@ -45,7 +45,13 @@ def resolve_help_file(language_code: str) -> Path:
 
 def load_ui_translations(fallback_strings: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
     languages_dir = resolve_languages_dir()
-    loaded: dict[str, dict[str, str]] = {lang: dict(strings) for lang, strings in fallback_strings.items()}
+    english_fallback = dict(fallback_strings.get("en", {}))
+    loaded: dict[str, dict[str, str]] = {
+        language_code: dict(english_fallback) for language_code, _label in LANGUAGE_OPTIONS
+    }
+    for lang, strings in fallback_strings.items():
+        loaded[lang] = dict(english_fallback)
+        loaded[lang].update(strings)
     if not languages_dir.is_dir():
         return loaded
     for language_code, _label in LANGUAGE_OPTIONS:
@@ -54,7 +60,9 @@ def load_ui_translations(fallback_strings: dict[str, dict[str, str]]) -> dict[st
             continue
         payload = json.loads(file_path.read_text(encoding="utf-8"))
         if isinstance(payload, dict):
-            loaded[language_code] = {str(key): str(value) for key, value in payload.items()}
+            merged = dict(loaded.get(language_code, {}))
+            merged.update({str(key): str(value) for key, value in payload.items()})
+            loaded[language_code] = merged
     return loaded
 
 

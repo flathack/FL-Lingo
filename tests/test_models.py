@@ -29,3 +29,17 @@ def test_translation_unit_statuses() -> None:
     assert auto_unit.status == RelocalizationStatus.AUTO_RELOCALIZE
     assert same_unit.status == RelocalizationStatus.ALREADY_LOCALIZED
     assert mod_unit.status == RelocalizationStatus.MOD_ONLY
+
+
+def test_translation_unit_normalizes_line_endings_for_status_and_change() -> None:
+    location = _location()
+    unit = TranslationUnit(
+        ResourceKind.INFOCARD,
+        location,
+        "<?xml version=\"1.0\"?>\n<RDL><TEXT>Test</TEXT></RDL>",
+        location,
+        "<?xml version=\"1.0\"?>\r\n<RDL><TEXT>Test</TEXT></RDL>",
+    )
+
+    assert unit.status == RelocalizationStatus.ALREADY_LOCALIZED
+    assert unit.is_changed is False

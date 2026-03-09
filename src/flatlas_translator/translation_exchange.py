@@ -9,6 +9,8 @@ from pathlib import Path
 from .models import RelocalizationStatus, ResourceCatalog, TranslationUnit
 from .terminology import build_term_map, extract_faction_glossary, is_unit_skippable, prefill_translation_text
 
+LONG_TEXT_MIN_LENGTH = 180
+
 
 @dataclass(frozen=True, slots=True)
 class ExchangeExportReport:
@@ -24,12 +26,44 @@ def export_mod_only_exchange(
     *,
     target_language: str = "de",
 ) -> ExchangeExportReport:
+    return _export_exchange(
+        catalog,
+        output_path,
+        target_language=target_language,
+        entry_filter=lambda unit: True,
+    )
+
+
+def export_long_open_exchange(
+    catalog: ResourceCatalog,
+    output_path: Path,
+    *,
+    target_language: str = "de",
+    min_length: int = LONG_TEXT_MIN_LENGTH,
+) -> ExchangeExportReport:
+    return _export_exchange(
+        catalog,
+        output_path,
+        target_language=target_language,
+        entry_filter=lambda unit: len(str(unit.source_text or "")) >= int(min_length),
+    )
+
+
+def _export_exchange(
+    catalog: ResourceCatalog,
+    output_path: Path,
+    *,
+    target_language: str,
+    entry_filter,
+) -> ExchangeExportReport:
     entries = []
     mod_only_units: list[TranslationUnit] = []
     skipped_entries = 0
     term_map = build_term_map(catalog.units, target_language=target_language)
     for unit in catalog.units:
         if unit.status != RelocalizationStatus.MOD_ONLY:
+            continue
+        if not entry_filter(unit):
             continue
         mod_only_units.append(unit)
         if is_unit_skippable(unit):

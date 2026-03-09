@@ -10,7 +10,7 @@
       padding: 24px 28px 48px;
       color: #1f1f1f;
       background: #f5f4ef;
-      line-height: 1.55;
+      line-height: 1.58;
     }
     h1, h2, h3 {
       color: #103c52;
@@ -19,6 +19,9 @@
       margin-top: 0;
       border-bottom: 2px solid #d97841;
       padding-bottom: 10px;
+    }
+    h2 {
+      margin-top: 34px;
     }
     .note, .tip, .warn {
       border-left: 4px solid #d97841;
@@ -39,114 +42,256 @@
       padding: 2px 5px;
       border-radius: 4px;
     }
+    pre {
+      background: #ece7df;
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
     ul, ol {
       padding-left: 22px;
     }
     a {
       color: #0b5cab;
     }
+    .toc {
+      background: #fff;
+      border: 1px solid #dfd8cf;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 18px 0 24px;
+    }
   </style>
 </head>
 <body>
   <h1>FL Lingo Help</h1>
+
   <p>
-    FL Lingo is a relocalization tool for Freelancer mods. It compares your current game install with a reference install,
-    restores known vanilla text automatically, exports unknown mod text for external translation, imports the translated
-    result, and writes the selected changes back into the game DLLs.
+    FL Lingo is a relocalization tool for Freelancer mods. It compares a current game install with a reference install,
+    applies known reference text automatically, identifies mod-added content without a match, supports export and import
+    for external translation, and writes the selected text back into the original game DLLs.
   </p>
 
   <div class="note">
-    Main use case: your game with an English mod on the left, and a clean localized Freelancer install on the right.
+    Main use case: your game with an English mod on the left, and a clean localized Freelancer installation on the right,
+    for example a German vanilla install.
   </div>
 
-  <h2>Main workflow</h2>
+  <div class="toc">
+    <b>Contents</b>
+    <ul>
+      <li>What FL Lingo does</li>
+      <li>Recommended workflow</li>
+      <li>Translation logic in detail</li>
+      <li>Status values and progress</li>
+      <li>Terminology, patterns, and editor workflow</li>
+      <li>DLL writing and backups</li>
+      <li>What automation can and cannot do</li>
+    </ul>
+  </div>
+
+  <h2>What FL Lingo does</h2>
+  <p>FL Lingo is not a generic online translator. It has three core jobs:</p>
   <ol>
-    <li>Select <b>Game with mod / current game</b>.</li>
-    <li>Select the <b>Reference install / comparison game</b>.</li>
-    <li>Click <b>Compare with reference</b>.</li>
-    <li>Export <b>mod-only</b> entries if the mod contains new English text.</li>
-    <li>Translate the export externally.</li>
-    <li>Import the translated file back into FL Lingo.</li>
-    <li>Review the preview and click <b>Apply translations</b>.</li>
+    <li>Find existing target-language text in a reference installation and apply it automatically.</li>
+    <li>Identify new mod-specific text that has no target-language reference match.</li>
+    <li>Write translated text back into the existing Freelancer DLLs without rebuilding them from scratch.</li>
   </ol>
 
-  <h2>What the statuses mean</h2>
-  <ul>
-    <li><b>Auto transferable</b>: FL Lingo found a matching text in the reference install and can apply it safely.</li>
-    <li><b>Already in target language</b>: source and reference already match.</li>
-    <li><b>Manually translated</b>: the entry contains a custom imported or edited translation.</li>
-    <li><b>Mod-only content</b>: the mod added a new entry with no target-language match in the reference install.</li>
-  </ul>
+  <h2>Recommended workflow</h2>
+  <ol>
+    <li>Select <b>Game with mod / current game</b>.</li>
+    <li>Select <b>Reference install / comparison game</b>.</li>
+    <li>Run <b>Compare with reference</b>.</li>
+    <li>Review the result using the purple, green, yellow, and gray progress states.</li>
+    <li><b>Export open entries</b> if the mod contains new text that still needs translation.</li>
+    <li>Translate that file externally or use the editor for individual entries.</li>
+    <li>Import the translated file.</li>
+    <li>Run <b>Apply translation</b>.</li>
+    <li>Test in game. If needed, rebuild the project and refine terminology or manual translations.</li>
+  </ol>
 
-  <h2>Editor tab</h2>
+  <h2>Translation logic in detail</h2>
+
+  <h3>1. Catalog building</h3>
   <p>
-    The Editor tab is the secondary workflow. It focuses on missing translations first, so you can work through open
-    entries quickly. Use it when you want to make manual corrections without exporting everything again.
+    FL Lingo reads the resource DLLs referenced by <code>freelancer.ini</code> in both installations, plus supplemental UI
+    DLLs such as <code>resources.dll</code>. It then builds an internal resource catalog from them.
   </p>
   <ul>
-    <li>The right text box is editable.</li>
-    <li><b>Save edit</b> stores a manual translation in the current project.</li>
-    <li><b>Reset manual edit</b> removes the manual override and falls back to the automatic/reference state.</li>
+    <li><b>RT_STRING</b>: regular string resources such as names, menu labels, and UI text.</li>
+    <li><b>RT_HTML</b>: infocards and RDL-/HTML-like text resources.</li>
+    <li>Each entry stores <b>DLL name</b>, <b>local resource ID</b>, <b>resource kind</b>, and <b>text</b>.</li>
   </ul>
 
-  <h2>Export and import</h2>
+  <h3>2. Reference matching</h3>
+  <p>The first match is purely technical and based on:</p>
+  <pre>resource kind + DLL name + local resource ID</pre>
   <p>
-    <b>Export mod-only</b> creates a JSON exchange file for entries that still need translation. This is the primary workflow
-    for new mod content.
+    If the source and reference catalogs contain the same DLL, the same resource type, and the same local ID, FL Lingo
+    treats them as a pair. This step is intentionally structural rather than heuristic.
+  </p>
+
+  <div class="warn">
+    If a mod deliberately reuses vanilla IDs for different meanings, the match can be technically correct but semantically
+    unexpected. FL Lingo does not try to judge intent at this stage.
+  </div>
+
+  <h3>3. Status calculation</h3>
+  <p>After matching, every entry receives a status:</p>
+  <ul>
+    <li><b>Already in target language</b>: source and target already match.</li>
+    <li><b>Auto transferable</b>: there is a target text in the reference install, but the source differs.</li>
+    <li><b>Mod-only content</b>: there is no target-side reference entry.</li>
+    <li><b>Manually translated</b>: the entry has an imported or directly edited custom translation.</li>
+  </ul>
+
+  <h3>4. Terminology and patterns</h3>
+  <p>
+    For entries without a reference match, FL Lingo does not attempt unrestricted machine translation. Instead it uses a
+    controlled combination of terminology and pattern rules.
   </p>
   <ul>
-    <li>You can send that file to an external translator or translate it yourself.</li>
-    <li>After editing, use <b>Import translation</b> to load the translated texts back into FL Lingo.</li>
-    <li>Known terminology from the active target-language terminology file is included and used for suggestions.</li>
+    <li><b>Terminology</b>: fixed term mappings such as factions, roles, ship labels, and UI terms.</li>
+    <li><b>Patterns</b>: controlled replacements for recurring phrases and text fragments.</li>
+    <li><b>Language-specific</b>: one terminology file is used per target language, such as <code>terminology.de.json</code>.</li>
   </ul>
+
+  <p>Example terminology:</p>
+  <pre>Bounty Hunters Guild -> Gilde der Kopfgeldjaeger
+Equipment Dealer -> Ausruestungshaendler
+Jump Hole -> Sprungloch</pre>
+
+  <p>Example patterns:</p>
+  <pre>Licence -> Lizenz
+Power Generator -> Energiegenerator
+Welcome to the Crossfire Universe -> Willkommen im Crossfire-Universum</pre>
+
+  <h3>5. Structured entries</h3>
+  <p>Many Freelancer entries are not plain sentences. FL Lingo treats several common structures separately:</p>
+  <ul>
+    <li><b>NPC blocks</b>: faction, role, and person name can be handled independently.</li>
+    <li><b>Label/value lines</b>: in <code>Armor: 10700</code>, only the left side is translated.</li>
+    <li><b>Named locations</b>: patterns such as <code>the Aquarius Cloud</code> or <code>the Vorgha Field</code> can be localized rule-based.</li>
+  </ul>
+
+  <p>Example NPC block:</p>
+  <pre>Blood Dragons
+Shogun Base Equipment Dealer
+Rikyu Asari</pre>
+  <p>Possible automatic suggestion:</p>
+  <pre>Blutdrachen
+Shogun Base Ausruestungshaendler
+Rikyu Asari</pre>
+
+  <h3>6. RDL / infocard logic</h3>
+  <p>
+    Long infocards are handled more conservatively than regular strings. FL Lingo no longer performs blind replacements
+    across the full XML/RDL block. Instead it processes only the contents inside <code>&lt;TEXT&gt;...&lt;/TEXT&gt;</code>.
+  </p>
+  <ul>
+    <li>Known labels such as <code>DIAMETER</code>, <code>MASS</code>, or <code>CLASS</code> are translated.</li>
+    <li>Known full sentences or safe phrase patterns are translated.</li>
+    <li>Loose single-word substitutions inside long prose are intentionally limited to avoid mixed or broken text.</li>
+  </ul>
+
+  <div class="tip">
+    This conservative behavior is intentional. A fully English paragraph is usually better than a half-translated paragraph
+    with incorrect meaning.
+  </div>
+
+  <h3>7. Skip logic</h3>
+  <p>Some entries should not be treated as translation work. These are counted as skipped and appear as yellow progress.</p>
+  <ul>
+    <li>Pure placeholders such as <code>#</code></li>
+    <li>Value-only lines such as <code>6/0</code>, <code>0/10</code>, or plain numbers</li>
+    <li>Obvious proper names</li>
+    <li>Location and station names when no actual translation is required</li>
+  </ul>
+
+  <h2>Status values and progress</h2>
+  <p>The progress bar distinguishes multiple kinds of coverage:</p>
+  <ul>
+    <li><b>Purple</b>: already identical to the target reference inside the current game install</li>
+    <li><b>Green</b>: ready to apply automatically or manually</li>
+    <li><b>Yellow</b>: intentionally skipped</li>
+    <li><b>Gray</b>: still open</li>
+  </ul>
+
+  <p>
+    Gray does not automatically mean “broken” or “unknown”. It only means that the entry is currently not covered by a
+    reference match, terminology, pattern rules, or a manual translation.
+  </p>
+
+  <h2>Editor, terminology, and pattern management</h2>
+  <p>The editor is the secondary workflow for targeted follow-up work.</p>
+  <ul>
+    <li>The right text field is editable and stores manual translations in the current project.</li>
+    <li>Selected terms can be saved directly as terminology mappings.</li>
+    <li>The built-in management area allows editing terminology entries and pattern rules.</li>
+    <li>After such changes, use <b>Rebuild project</b> so the new rules are applied to the full catalog again.</li>
+  </ul>
+
+  <h2>Export and import for external translation</h2>
+  <p>
+    This workflow is intended for long free-form text and larger mod-specific content that should not be handled only by
+    rule-based translation.
+  </p>
+  <ol>
+    <li><b>Export open entries</b></li>
+    <li>Translate the JSON externally</li>
+    <li><b>Import translation</b></li>
+    <li>Review the result in the editor</li>
+    <li><b>Apply translation</b></li>
+  </ol>
 
   <h2>DLL analysis</h2>
   <p>
-    The DLL Analysis tab shows the safest write strategy per DLL:
+    The DLL Analysis page is not just raw statistics. It evaluates the safest write strategy for each DLL and helps the
+    user understand how FL Lingo intends to modify the install.
   </p>
   <ul>
     <li><b>safe to replace with target DLL</b>: the full DLL can be copied from the reference install.</li>
     <li><b>partially relocalizable only</b>: only matching entries will be patched.</li>
-    <li><b>not safe to replace</b>: FL Lingo keeps its hands off the full DLL and only applies safe entry-level changes.</li>
+    <li><b>not safe to replace</b>: no automatic full replacement.</li>
   </ul>
 
-  <h2>Projects</h2>
+  <h2>DLL writing and backups</h2>
   <p>
-    Use <b>Save project</b> to store your current session as a <code>.FLLingo</code> file. This includes:
+    FL Lingo no longer writes fresh resource-only DLLs. It updates the existing DLLs directly so the original resource
+    structure, language metadata, and mod-specific content remain intact.
   </p>
   <ul>
-    <li>selected install paths</li>
-    <li>language pair</li>
-    <li>paired catalog state</li>
-    <li>manual translations</li>
-    <li>DLL analysis data</li>
+    <li>A backup is created automatically before writing.</li>
+    <li>The apply run can resume DLL by DLL if an error occurs.</li>
+    <li>The main window shows an embedded progress area while writing.</li>
+    <li><b>Restore backup...</b> can be used to roll written DLLs back.</li>
   </ul>
 
-  <h2>Backups and safety</h2>
   <div class="warn">
-    FL Lingo modifies Freelancer resource DLLs. Always test against a copy of the game if you are unsure.
+    If you work against a live game installation, always test new translation runs on a copy first.
   </div>
+
+  <h2>Limits of automation</h2>
+  <p>FL Lingo is intentionally not a full machine translator. The main limits are:</p>
   <ul>
-    <li>A backup is created automatically before translations are applied.</li>
-    <li>Use <b>Restore backup...</b> if you want to revert written DLLs.</li>
-    <li>If the required resource toolchain is missing, install it from the Settings menu first.</li>
+    <li>Free-form story and lore text cannot always be translated safely with local rules.</li>
+    <li>Mods may deliberately remap resource IDs compared to vanilla.</li>
+    <li>Some already-German mod text still has no reference match and therefore remains technically open.</li>
+    <li>Conservative pretranslation is often better than an incorrect full automatic translation.</li>
   </ul>
 
-  <h2>Terminology</h2>
   <p>
-    FL Lingo uses one terminology file per target language. You can open it from <b>Settings - Open terminology...</b>.
+    That is why the real core of FL Lingo is the combination of reference matching, terminology, pattern rules, and the
+    external export/import workflow.
   </p>
-  <ul>
-    <li>Files live in <code>data/terminology.&lt;lang&gt;.json</code>.</li>
-    <li>Known faction and role names can be translated consistently from there.</li>
-    <li>The active terminology depends on the selected target language.</li>
-  </ul>
 
-  <h2>Languages and themes</h2>
+  <h2>Languages, themes, and projects</h2>
   <ul>
-    <li>Supported UI languages: English, German, French, Spanish, Russian.</li>
-    <li>Supported themes: light, dark, high contrast.</li>
-    <li>Language and theme are stored persistently.</li>
+    <li>UI languages: English, German, French, Spanish, Russian</li>
+    <li>Themes: light, dark, high contrast</li>
+    <li>Project files use the <code>.FLLingo</code> extension</li>
+    <li>The project stores selected paths, language pair, comparison state, and manual translations</li>
   </ul>
 
   <div class="tip">

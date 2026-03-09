@@ -44,7 +44,7 @@ class TranslationUnit:
     @property
     def is_changed(self) -> bool:
         replacement = self.replacement_text
-        return bool(replacement) and self.source_text != replacement
+        return bool(replacement) and _normalized_compare_text(self.source_text) != _normalized_compare_text(replacement)
 
     @property
     def replacement_text(self) -> str:
@@ -56,7 +56,7 @@ class TranslationUnit:
             return RelocalizationStatus.MANUAL_TRANSLATION
         if not self.has_target:
             return RelocalizationStatus.MOD_ONLY
-        if self.source_text == self.target_text:
+        if _normalized_compare_text(self.source_text) == _normalized_compare_text(self.target_text):
             return RelocalizationStatus.ALREADY_LOCALIZED
         return RelocalizationStatus.AUTO_RELOCALIZE
 
@@ -112,3 +112,7 @@ def _location_to_dict(location: ResourceLocation | None) -> dict[str, object] | 
         "slot": location.slot,
         "global_id": location.global_id,
     }
+
+
+def _normalized_compare_text(text: str) -> str:
+    return str(text or "").replace("\r\n", "\n").replace("\r", "\n")

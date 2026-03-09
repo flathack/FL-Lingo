@@ -10,6 +10,7 @@ from .path_utils import ci_resolve
 
 RESOURCE_SECTION = "resources"
 IGNORED_DLLS = {"resources_vanilla.dll"}
+SUPPLEMENTAL_UI_DLLS = ("resources.dll",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,12 +89,23 @@ def resolve_dll_path(freelancer_ini: Path, dll_name: str) -> Path | None:
 def load_resource_dlls(install_dir: Path) -> tuple[Path, list[ResourceDll]]:
     freelancer_ini = find_freelancer_ini(install_dir)
     resources: list[ResourceDll] = []
+    seen: set[str] = set()
 
     for dll_name in parse_resource_dll_names(freelancer_ini):
         dll_path = resolve_dll_path(freelancer_ini, dll_name)
         if dll_path is None:
             continue
+        seen.add(dll_path.name.lower())
         resources.append(ResourceDll(ini_path=freelancer_ini, dll_name=dll_name, dll_path=dll_path))
 
-    return freelancer_ini, resources
+    exe_dir = freelancer_ini.parent
+    for dll_name in SUPPLEMENTAL_UI_DLLS:
+        if dll_name.lower() in seen:
+            continue
+        dll_path = ci_resolve(exe_dir, dll_name)
+        if dll_path is None or not dll_path.is_file():
+            continue
+        resources.append(ResourceDll(ini_path=freelancer_ini, dll_name=dll_name, dll_path=dll_path))
+        seen.add(dll_name.lower())
 
+    return freelancer_ini, resources

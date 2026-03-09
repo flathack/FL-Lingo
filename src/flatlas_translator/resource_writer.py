@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import ctypes
+from ctypes import wintypes
 import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
+import json
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +25,18 @@ class ApplyReport:
     backup_dir: Path
     written_files: tuple[Path, ...]
     replaced_units: int
+    resumed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ApplySessionInfo:
+    state_path: Path
+    backup_dir: Path
+    total_dlls: int
+    completed_dlls: tuple[str, ...]
+    pending_dlls: tuple[str, ...]
+    failed_dll: str | None = None
+    last_error: str | None = None
 
 
 class ResourceWriter:
@@ -35,11 +50,15 @@ class ResourceWriter:
         self._html_reader = html_reader or DllHtmlResourceReader()
 
     def has_toolchain(self) -> bool:
-        return self._resource_toolchain_commands() is not None
+        return sys.platform.startswith("win")
 
     @staticmethod
     def backup_root(install_dir: Path) -> Path:
         return Path(install_dir) / "FLAtlas-Translator-Backups"
+
+    @staticmethod
+    def apply_state_path(install_dir: Path) -> Path:
+        return ResourceWriter.backup_root(install_dir) / "apply-session.json"
 
     @staticmethod
     def list_backups(install_dir: Path) -> list[Path]:
@@ -67,6 +86,42 @@ class ResourceWriter:
             raise RuntimeError("Backup does not contain any DLL files.")
         return tuple(written_files)
 
+    def load_apply_session(self, catalog: ResourceCatalog, *, units=None) -> ApplySessionInfo | None:
+        selected_units = list(units if units is not None else catalog.units)
+        apply_units = [
+            unit
+            for unit in selected_units
+            if unit.status in (RelocalizationStatus.AUTO_RELOCALIZE, RelocalizationStatus.MANUAL_TRANSLATION)
+        ]
+        if not apply_units:
+            return None
+        batches = self._build_dll_batches(apply_units)
+        if not batches:
+            return None
+        signature = self._apply_signature(apply_units)
+        state_path = self.apply_state_path(catalog.install_dir)
+        payload = self._load_apply_state_payload(state_path)
+        if payload is None:
+            return None
+        if str(payload.get("signature", "") or "") != signature:
+            return None
+        backup_dir = Path(str(payload.get("backup_dir", "") or ""))
+        if not backup_dir.is_dir():
+            return None
+        completed = tuple(str(item).lower() for item in list(payload.get("completed_dlls", [])))
+        completed_set = set(completed)
+        ordered_names = tuple(dll_path.name.lower() for dll_path, _bucket in batches)
+        pending = tuple(name for name in ordered_names if name not in completed_set)
+        return ApplySessionInfo(
+            state_path=state_path,
+            backup_dir=backup_dir,
+            total_dlls=len(ordered_names),
+            completed_dlls=completed,
+            pending_dlls=pending,
+            failed_dll=str(payload.get("failed_dll", "") or "") or None,
+            last_error=str(payload.get("last_error", "") or "") or None,
+        )
+
     def apply_german_relocalization(
         self,
         catalog: ResourceCatalog,
@@ -89,22 +144,34 @@ class ResourceWriter:
                 "No supported resource toolchain found. Install LLVM or MSVC resource tools first."
             )
 
-        backup_dir = self._make_backup_dir(catalog.install_dir, backup_root)
-        by_dll: dict[Path, dict[str, dict[int, str]]] = {}
-        for unit in apply_units:
-            dll_path = unit.source.dll_path
-            bucket = by_dll.setdefault(dll_path, {"strings": {}, "infos": {}})
-            replacement_text = unit.replacement_text
-            if unit.kind == ResourceKind.STRING:
-                bucket["strings"][unit.source.local_id] = replacement_text
-            else:
-                bucket["infos"][unit.source.local_id] = replacement_text
+        batches = self._build_dll_batches(apply_units)
+        if not batches:
+            raise RuntimeError("No DLL batches available to write.")
+        signature = self._apply_signature(apply_units)
+        session = self.load_apply_session(catalog, units=apply_units)
+        resumed = session is not None
+        backup_dir = session.backup_dir if session is not None else self._make_backup_dir(catalog.install_dir, backup_root)
+        completed_dlls = set(session.completed_dlls if session is not None else ())
+        state_path = self.apply_state_path(catalog.install_dir)
+        self._save_apply_state_payload(
+            state_path,
+            {
+                "signature": signature,
+                "backup_dir": str(backup_dir),
+                "completed_dlls": sorted(completed_dlls),
+                "failed_dll": None,
+                "last_error": None,
+            },
+        )
 
         written_files: list[Path] = []
         plan_by_name = {plan.dll_name: plan for plan in list(dll_plans or [])}
-        total_dlls = len(by_dll)
-        for index, (dll_path, bucket) in enumerate(by_dll.items(), start=1):
+        total_dlls = len(batches)
+        for index, (dll_path, bucket) in enumerate(batches, start=1):
             dll_name = dll_path.name
+            dll_key = dll_name.lower()
+            if dll_key in completed_dlls:
+                continue
             plan = plan_by_name.get(dll_name)
             current_strings = self._string_reader.read_strings(dll_path)
             current_infos = self._html_reader.read_html_resources(dll_path)
@@ -112,33 +179,84 @@ class ResourceWriter:
             current_infos.update(bucket["infos"])
 
             backup_path = backup_dir / dll_path.name
-            backup_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(dll_path, backup_path)
+            if not backup_path.is_file():
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dll_path, backup_path)
 
+            action = "patch"
             if (
                 plan is not None
                 and plan.strategy == DllStrategy.FULL_REPLACE_SAFE
                 and plan.target_dll_path is not None
                 and plan.target_dll_path.is_file()
             ):
-                if progress_callback is not None:
-                    progress_callback(index, total_dlls, dll_name, "copy")
-                shutil.copy2(plan.target_dll_path, dll_path)
-                written_files.append(dll_path)
-                continue
+                action = "copy"
 
             if progress_callback is not None:
-                progress_callback(index, total_dlls, dll_name, "patch")
-            ok, error = self._write_resource_dll_entries(dll_path, current_strings, current_infos)
-            if not ok:
-                shutil.copy2(backup_path, dll_path)
-                raise RuntimeError(f"Failed to write {dll_path.name}: {error}")
-            written_files.append(dll_path)
+                progress_callback(
+                    {
+                        "phase": "start",
+                        "current": index,
+                        "total": total_dlls,
+                        "dll_name": dll_name,
+                        "action": action,
+                        "preview_lines": self._preview_lines_for_bucket(bucket),
+                        "completed": len(completed_dlls),
+                        "resumed": resumed,
+                    }
+                )
+
+            if action == "copy":
+                shutil.copy2(plan.target_dll_path, dll_path)
+                written_files.append(dll_path)
+            else:
+                ok, error = self._write_resource_dll_entries(dll_path, current_strings, current_infos)
+                if not ok:
+                    shutil.copy2(backup_path, dll_path)
+                    self._save_apply_state_payload(
+                        state_path,
+                        {
+                            "signature": signature,
+                            "backup_dir": str(backup_dir),
+                            "completed_dlls": sorted(completed_dlls),
+                            "failed_dll": dll_name,
+                            "last_error": error,
+                        },
+                    )
+                    raise RuntimeError(f"Failed to write {dll_path.name}: {error}")
+                written_files.append(dll_path)
+
+            completed_dlls.add(dll_key)
+            self._save_apply_state_payload(
+                state_path,
+                {
+                    "signature": signature,
+                    "backup_dir": str(backup_dir),
+                    "completed_dlls": sorted(completed_dlls),
+                    "failed_dll": None,
+                    "last_error": None,
+                },
+            )
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "phase": "done",
+                        "current": index,
+                        "total": total_dlls,
+                        "dll_name": dll_name,
+                        "action": action,
+                        "preview_lines": self._preview_lines_for_bucket(bucket),
+                        "completed": len(completed_dlls),
+                        "resumed": resumed,
+                    }
+                )
+        self._clear_apply_state(state_path)
 
         return ApplyReport(
             backup_dir=backup_dir,
             written_files=tuple(written_files),
             replaced_units=len(apply_units),
+            resumed=resumed,
         )
 
     @staticmethod
@@ -184,15 +302,88 @@ class ResourceWriter:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    @staticmethod
+    def _load_apply_state_payload(state_path: Path) -> dict[str, object] | None:
+        if not state_path.is_file():
+            return None
+        try:
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        return payload
+
+    @staticmethod
+    def _save_apply_state_payload(state_path: Path, payload: dict[str, object]) -> None:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        envelope = {
+            "format": "fl-lingo-apply-session",
+            "version": 1,
+            **payload,
+        }
+        state_path.write_text(json.dumps(envelope, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    @staticmethod
+    def _clear_apply_state(state_path: Path) -> None:
+        try:
+            state_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _apply_signature(units) -> str:
+        parts = []
+        for unit in sorted(units, key=lambda item: (item.source.dll_name.lower(), int(item.source.local_id), str(item.kind))):
+            parts.append(
+                "|".join(
+                    [
+                        unit.source.dll_name.lower(),
+                        str(int(unit.source.local_id)),
+                        str(unit.kind),
+                        unit.replacement_text,
+                    ]
+                )
+            )
+        digest = hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()
+        return digest
+
+    @staticmethod
+    def _build_dll_batches(units) -> list[tuple[Path, dict[str, dict[int, str]]]]:
+        by_dll: dict[Path, dict[str, dict[int, str]]] = {}
+        for unit in units:
+            dll_path = unit.source.dll_path
+            bucket = by_dll.setdefault(dll_path, {"strings": {}, "infos": {}})
+            replacement_text = unit.replacement_text
+            if unit.kind == ResourceKind.STRING:
+                bucket["strings"][unit.source.local_id] = replacement_text
+            else:
+                bucket["infos"][unit.source.local_id] = replacement_text
+        return sorted(by_dll.items(), key=lambda item: item[0].name.lower())
+
+    @staticmethod
+    def _preview_lines_for_bucket(bucket: dict[str, dict[int, str]]) -> list[str]:
+        preview: list[str] = []
+        for collection_name in ("strings", "infos"):
+            for _local_id, text in sorted(bucket.get(collection_name, {}).items()):
+                raw = str(text or "").replace("\r\n", "\n")
+                for line in raw.split("\n"):
+                    clean = " ".join(line.strip().split())
+                    if not clean:
+                        continue
+                    preview.append(clean[:140])
+                    if len(preview) >= 12:
+                        return preview
+        return preview
+
     def _write_resource_dll_entries(
         self,
         dll_path: Path,
         strings_by_local_id: dict[int, str],
         infos_by_local_id: dict[int, str] | None = None,
     ) -> tuple[bool, str]:
-        toolchain = self._resource_toolchain_commands()
-        if toolchain is None:
-            return False, "No supported resource toolchain found."
+        if not sys.platform.startswith("win"):
+            return False, "Resource patching is only supported on Windows."
 
         cleaned = {
             int(key): str(value).strip()
@@ -206,66 +397,164 @@ class ResourceWriter:
         }
         if not cleaned and not info_cleaned:
             return False, "no strings to write"
+        try:
+            language_map, default_by_type = self._resource_language_map(dll_path)
+            self._patch_existing_resource_dll(dll_path, cleaned, info_cleaned, language_map, default_by_type)
+            return True, ""
+        except Exception as exc:
+            return False, str(exc)
 
-        with tempfile.TemporaryDirectory(prefix="flatlas_translator_") as temp_dir:
-            temp_path = Path(temp_dir)
-            rc_path = temp_path / "resource.rc"
-            res_path = temp_path / "resource.res"
-            tmp_dll = temp_path / "resource.dll"
+    def _patch_existing_resource_dll(
+        self,
+        dll_path: Path,
+        strings_by_local_id: dict[int, str],
+        infos_by_local_id: dict[int, str],
+        language_map: dict[tuple[int, int], int],
+        default_by_type: dict[int, int],
+    ) -> None:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        begin_update = kernel32.BeginUpdateResourceW
+        begin_update.argtypes = [wintypes.LPCWSTR, wintypes.BOOL]
+        begin_update.restype = wintypes.HANDLE
+        end_update = kernel32.EndUpdateResourceW
+        end_update.argtypes = [wintypes.HANDLE, wintypes.BOOL]
+        end_update.restype = wintypes.BOOL
+        update_resource = kernel32.UpdateResourceW
+        update_resource.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            wintypes.WORD,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+        ]
+        update_resource.restype = wintypes.BOOL
 
-            rc_lines: list[str] = []
-            if cleaned:
-                rc_lines.extend(["STRINGTABLE", "BEGIN"])
-                for local_id in sorted(cleaned):
-                    rc_lines.append(f'    {local_id} "{self._rc_escape(cleaned[local_id])}"')
-                rc_lines.extend(["END", ""])
-            for local_id in sorted(info_cleaned):
-                info_file = temp_path / f"ids_info_{local_id}.xml"
-                info_file.write_text(info_cleaned[local_id], encoding="utf-8")
-                rc_lines.append(f'{local_id} 23 "{info_file.as_posix()}"')
-            rc_lines.append("")
-            rc_path.write_text("\n".join(rc_lines), encoding="utf-8")
+        handle = begin_update(str(dll_path), False)
+        if not handle:
+            raise ctypes.WinError(ctypes.get_last_error())
 
-            try:
-                compile_cmd, link_cmd = toolchain(str(rc_path), str(res_path), str(tmp_dll))
-                subprocess.run(compile_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                subprocess.run(link_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            except subprocess.CalledProcessError as exc:
-                return False, exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        try:
+            string_blocks = self._build_string_blocks(strings_by_local_id)
+            for block_id, block_blob in sorted(string_blocks.items()):
+                lang = int(language_map.get((6, block_id), default_by_type.get(6, 1033)))
+                data_buffer = ctypes.create_string_buffer(block_blob)
+                if not update_resource(
+                    handle,
+                    self._resource_id(6),
+                    self._resource_id(block_id),
+                    lang,
+                    data_buffer,
+                    len(block_blob),
+                ):
+                    raise ctypes.WinError(ctypes.get_last_error())
 
-            try:
-                dll_path.parent.mkdir(parents=True, exist_ok=True)
-                last_error = None
-                for _attempt in range(8):
-                    try:
-                        shutil.copy2(tmp_dll, dll_path)
-                        last_error = None
-                        break
-                    except PermissionError as exc:
-                        last_error = exc
-                        time.sleep(0.15)
-                    except OSError as exc:
-                        last_error = exc
-                        if getattr(exc, "winerror", None) in (5, 32, 33, 1224):
-                            time.sleep(0.15)
-                            continue
-                        break
-                if last_error is not None:
-                    raise last_error
-            except Exception as exc:
-                return False, str(exc)
+            for local_id, text in sorted(infos_by_local_id.items()):
+                lang = int(language_map.get((23, int(local_id)), default_by_type.get(23, 1033)))
+                blob = self._encode_html_resource(str(text))
+                data_buffer = ctypes.create_string_buffer(blob)
+                if not update_resource(
+                    handle,
+                    self._resource_id(23),
+                    self._resource_id(int(local_id)),
+                    lang,
+                    data_buffer,
+                    len(blob),
+                ):
+                    raise ctypes.WinError(ctypes.get_last_error())
+        except Exception:
+            end_update(handle, True)
+            raise
 
-        return True, ""
+        if not end_update(handle, False):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    @staticmethod
+    def _build_string_blocks(strings_by_local_id: dict[int, str]) -> dict[int, bytes]:
+        by_block: dict[int, dict[int, str]] = {}
+        for local_id, text in strings_by_local_id.items():
+            block_id = (int(local_id) // 16) + 1
+            block_values = by_block.setdefault(block_id, {})
+            block_values[int(local_id) % 16] = str(text or "")
+
+        blocks: dict[int, bytes] = {}
+        for block_id, values in by_block.items():
+            parts = bytearray()
+            for index in range(16):
+                text = values.get(index, "")
+                encoded = str(text).encode("utf-16le")
+                char_count = len(encoded) // 2
+                parts.extend(int(char_count).to_bytes(2, "little"))
+                parts.extend(encoded)
+            blocks[block_id] = bytes(parts)
+        return blocks
+
+    @staticmethod
+    def _encode_html_resource(text: str) -> bytes:
+        normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+        return b"\xff\xfe" + normalized.encode("utf-16le")
+
+    @staticmethod
+    def _resource_language_map(dll_path: Path) -> tuple[dict[tuple[int, int], int], dict[int, int]]:
+        try:
+            import pefile  # type: ignore
+        except Exception as exc:
+            raise RuntimeError("pefile is required for resource patching.") from exc
+
+        pe = pefile.PE(str(dll_path), fast_load=True)
+        pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_RESOURCE"]])
+        mapping: dict[tuple[int, int], int] = {}
+        defaults: dict[int, int] = {}
+        try:
+            root = getattr(pe, "DIRECTORY_ENTRY_RESOURCE", None)
+            if root is None:
+                return mapping, defaults
+            for type_entry in getattr(root, "entries", []):
+                type_id = getattr(type_entry, "id", None)
+                if not isinstance(type_id, int):
+                    continue
+                for name_entry in getattr(type_entry.directory, "entries", []):
+                    name_id = getattr(name_entry, "id", None)
+                    if not isinstance(name_id, int):
+                        continue
+                    lang_entries = list(getattr(name_entry.directory, "entries", []))
+                    if not lang_entries:
+                        continue
+                    lang_id = int(getattr(lang_entries[0], "id", 0) or 0)
+                    mapping[(type_id, name_id)] = lang_id
+                    defaults.setdefault(type_id, lang_id)
+        finally:
+            pe.close()
+        return mapping, defaults
+
+    @staticmethod
+    def _resource_id(value: int) -> ctypes.c_void_p:
+        return ctypes.c_void_p(int(value))
 
     @staticmethod
     def _rc_escape(text: str) -> str:
-        return (
-            str(text or "")
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\r\n", "\\n")
-            .replace("\n", "\\n")
-        )
+        value = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+        pieces: list[str] = []
+        for char in value:
+            codepoint = ord(char)
+            if char == "\"":
+                pieces.append("\"\"")
+            elif char == "\\":
+                pieces.append("\\\\")
+            elif char == "\n":
+                pieces.append("\\n")
+            elif char == "\t":
+                pieces.append("\\t")
+            elif codepoint < 32:
+                pieces.append(f"\\x{codepoint:02X}")
+            elif codepoint > 127:
+                if codepoint <= 0xFFFF:
+                    pieces.append(f"\\u{codepoint:04X}")
+                else:
+                    pieces.append(f"\\U{codepoint:08X}")
+            else:
+                pieces.append(char)
+        return "".join(pieces)
 
     @staticmethod
     def _resource_toolchain_commands():

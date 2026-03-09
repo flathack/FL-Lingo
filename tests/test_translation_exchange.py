@@ -2,7 +2,13 @@ import json
 from pathlib import Path
 
 from flatlas_translator.models import ResourceCatalog, ResourceKind, ResourceLocation, TranslationUnit, make_global_id
-from flatlas_translator.translation_exchange import export_mod_only_exchange, import_exchange, update_manual_translation
+from flatlas_translator.translation_exchange import (
+    LONG_TEXT_MIN_LENGTH,
+    export_long_open_exchange,
+    export_mod_only_exchange,
+    import_exchange,
+    update_manual_translation,
+)
 
 
 def _unit(
@@ -86,6 +92,31 @@ def test_import_exchange_applies_manual_text_to_matching_units(tmp_path: Path) -
     merged = import_exchange(catalog, exchange_path)
 
     assert merged.units[0].manual_text == "Benutzer Uebersetzung"
+
+
+def test_export_long_open_exchange_exports_only_long_open_entries(tmp_path: Path) -> None:
+    long_text = "A" * (LONG_TEXT_MIN_LENGTH + 5)
+    short_text = "Short open text"
+    long_skippable = "#\n" * LONG_TEXT_MIN_LENGTH
+    catalog = ResourceCatalog(
+        install_dir=Path("C:/source"),
+        freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
+        units=(
+            _unit(long_text, local_id=20),
+            _unit(short_text, local_id=21),
+            _unit(long_skippable, local_id=22),
+            _unit("Matched ref", target_text="Deutscher Text", local_id=23, with_target=True),
+        ),
+    )
+
+    report = export_long_open_exchange(catalog, tmp_path / "long-open.json")
+    data = json.loads(report.output_path.read_text(encoding="utf-8"))
+
+    assert report.exported_entries == 1
+    assert report.skipped_entries == 1
+    assert data["entries"][0]["source_text"] == long_text
+    assert data["metadata"]["exported_entries"] == 1
+    assert data["metadata"]["skipped_entries"] == 1
 
 
 def test_update_manual_translation_sets_and_clears_manual_text() -> None:

@@ -78,7 +78,11 @@ NON_PERSON_KEYWORDS: tuple[str, ...] = (
 )
 
 _PERSON_NAME_RE = re.compile(r"^[A-Z][A-Za-z'`-]+(?: [A-Z][A-Za-z'`-]+){1,2}$")
+_SYMBOLIC_OR_NUMERIC_LINE_RE = re.compile(r"^[#\-\d\s/.,%+]+$")
+_NAMED_LOCATION_RE = re.compile(r"^the (?P<name>.+?) (?P<kind>Cloud|Field)$", re.IGNORECASE)
+_RDL_TEXT_RE = re.compile(r"(<TEXT>)(.*?)(</TEXT>)", re.IGNORECASE | re.DOTALL)
 _TERM_MAP_CACHE: dict[str, dict[str, str]] = {}
+_PATTERN_MAP_CACHE: dict[str, list["ReplacementPattern"]] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +96,20 @@ class GlossaryEntry:
             "source_term": self.source_term,
             "target_term": self.target_term,
             "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ReplacementPattern:
+    source_text: str
+    target_text: str
+    section: str = "generic"
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "source_text": self.source_text,
+            "target_text": self.target_text,
+            "section": self.section,
         }
 
 
@@ -129,12 +147,13 @@ def extract_faction_glossary(
 
 def apply_known_term_suggestions(catalog: ResourceCatalog, *, target_language: str = "de") -> ResourceCatalog:
     term_map = build_term_map(catalog.units, target_language=target_language)
+    patterns = load_replacement_patterns(target_language)
     updated_units: list[TranslationUnit] = []
     for unit in catalog.units:
         if unit.status != RelocalizationStatus.MOD_ONLY or unit.manual_text:
             updated_units.append(unit)
             continue
-        suggestion = suggest_manual_translation(unit, term_map)
+        suggestion = suggest_manual_translation(unit, term_map, patterns=patterns)
         if not suggestion:
             updated_units.append(unit)
             continue
@@ -155,7 +174,12 @@ def apply_known_term_suggestions(catalog: ResourceCatalog, *, target_language: s
     )
 
 
-def suggest_manual_translation(unit: TranslationUnit, term_map: dict[str, str]) -> str:
+def suggest_manual_translation(
+    unit: TranslationUnit,
+    term_map: dict[str, str],
+    *,
+    patterns: list[ReplacementPattern] | None = None,
+) -> str:
     if unit.status != RelocalizationStatus.MOD_ONLY:
         return ""
     lines = _split_lines(unit.source_text)
@@ -163,8 +187,9 @@ def suggest_manual_translation(unit: TranslationUnit, term_map: dict[str, str]) 
         return ""
     translated_lines: list[str] = []
     changed = False
+    resolved_patterns = list(patterns or [])
     for line in lines:
-        translated_line = _translate_line_with_terms(line, term_map)
+        translated_line = _translate_line_with_terms(line, term_map, resolved_patterns)
         if translated_line != line:
             translated_lines.append(translated_line)
             changed = True
@@ -176,26 +201,37 @@ def suggest_manual_translation(unit: TranslationUnit, term_map: dict[str, str]) 
     return "\n".join(translated_lines) if changed else ""
 
 
-def prefill_translation_text(text: str, term_map: dict[str, str]) -> str:
+def prefill_translation_text(
+    text: str,
+    term_map: dict[str, str],
+    patterns: list[ReplacementPattern] | None = None,
+) -> str:
     translated = _normalize_text(text)
     if not translated:
         return ""
-    for source_term, target_term in term_map.items():
-        translated = translated.replace(source_term, target_term)
-    return translated
+    if _looks_like_rdl_text(translated):
+        return _translate_rdl_text_nodes(translated, term_map, list(patterns or []))
+    return _translate_text_segment(translated, term_map, list(patterns or []))
 
 
-def _translate_line_with_terms(line: str, term_map: dict[str, str]) -> str:
+def _translate_line_with_terms(
+    line: str,
+    term_map: dict[str, str],
+    patterns: list[ReplacementPattern] | None = None,
+) -> str:
     normalized = _normalize_text(line)
     if not normalized:
         return ""
     exact_translation = term_map.get(normalized)
     if exact_translation:
         return exact_translation
+    location_translation = _translate_named_location_line(normalized)
+    if location_translation:
+        return _apply_patterns(location_translation, patterns)
     colon_translation = _translate_colon_label_line(normalized, term_map)
     if colon_translation:
-        return colon_translation
-    return prefill_translation_text(normalized, term_map)
+        return _apply_patterns(colon_translation, patterns)
+    return _translate_text_segment(normalized, term_map, list(patterns or []))
 
 
 def is_unit_skippable(unit: TranslationUnit) -> bool:
@@ -211,6 +247,8 @@ def is_line_non_translatable(text: str) -> bool:
     normalized = _normalize_text(text)
     if not normalized:
         return False
+    if _SYMBOLIC_OR_NUMERIC_LINE_RE.fullmatch(normalized):
+        return True
     if _has_location_keyword(normalized):
         return True
     if _looks_like_person_name(normalized):
@@ -269,8 +307,19 @@ def load_default_term_translations(language_code: str = "de") -> dict[str, str]:
     return dict(_TERM_MAP_CACHE[normalized_language])
 
 
+def load_replacement_patterns(language_code: str = "de") -> list[ReplacementPattern]:
+    normalized_language = _normalize_language_code(language_code)
+    cached = _PATTERN_MAP_CACHE.get(normalized_language)
+    if cached is not None:
+        return list(cached)
+    patterns = _load_pattern_translations_from_disk(normalized_language)
+    _PATTERN_MAP_CACHE[normalized_language] = patterns
+    return list(patterns)
+
+
 def clear_term_map_cache() -> None:
     _TERM_MAP_CACHE.clear()
+    _PATTERN_MAP_CACHE.clear()
 
 
 def resolve_terminology_file(language_code: str = "de") -> Path:
@@ -285,6 +334,7 @@ def resolve_terminology_file(language_code: str = "de") -> Path:
             {
                 "language": normalized_language,
                 "terms": _DEFAULT_TERM_TRANSLATIONS if normalized_language == "de" else {},
+                "patterns": {},
             },
             indent=2,
             ensure_ascii=False,
@@ -326,16 +376,74 @@ def save_term_mapping(
     return terminology_path
 
 
+def save_replacement_pattern(
+    language_code: str,
+    source_text: str,
+    target_text: str,
+    *,
+    section: str = "generic",
+) -> Path:
+    source = _normalize_text(source_text)
+    target = _normalize_text(target_text)
+    if not source or not target:
+        raise ValueError("Source and target pattern must not be empty.")
+    terminology_path = resolve_terminology_file(language_code)
+    payload = _load_terminology_payload(terminology_path)
+    patterns = payload.get("patterns")
+    if not isinstance(patterns, dict):
+        patterns = {}
+        payload["patterns"] = patterns
+    bucket_name = section.strip() or "generic"
+    bucket = patterns.get(bucket_name)
+    if not isinstance(bucket, dict):
+        bucket = {}
+        patterns[bucket_name] = bucket
+    bucket[source] = target
+    terminology_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    clear_term_map_cache()
+    return terminology_path
+
+
+def list_terminology_entries(language_code: str = "de") -> list[tuple[str, str, str]]:
+    terminology_path = resolve_terminology_file(language_code)
+    payload = _load_terminology_payload(terminology_path)
+    terms = payload.get("terms", {})
+    rows: list[tuple[str, str, str]] = []
+    if isinstance(terms, dict):
+        for section, section_payload in terms.items():
+            if isinstance(section_payload, dict):
+                for source, target in sorted(section_payload.items(), key=lambda item: item[0].lower()):
+                    if not isinstance(target, dict):
+                        rows.append((str(section), str(source), str(target)))
+    return rows
+
+
+def list_pattern_entries(language_code: str = "de") -> list[ReplacementPattern]:
+    return load_replacement_patterns(language_code)
+
+
 def _load_term_translations_from_disk(language_code: str) -> dict[str, str]:
     for candidate in _terminology_file_candidates(language_code):
         if not candidate.is_file():
             continue
-        payload = json.loads(candidate.read_text(encoding="utf-8"))
+        payload = _load_terminology_payload(candidate)
         terms = payload.get("terms", {})
         flattened = _flatten_term_sections(terms)
         if flattened:
             return flattened
     return dict(_DEFAULT_TERM_TRANSLATIONS if language_code == "de" else {})
+
+
+def _load_pattern_translations_from_disk(language_code: str) -> list[ReplacementPattern]:
+    for candidate in _terminology_file_candidates(language_code):
+        if not candidate.is_file():
+            continue
+        payload = _load_terminology_payload(candidate)
+        raw_patterns = payload.get("patterns", {})
+        flattened = _flatten_pattern_sections(raw_patterns)
+        if flattened:
+            return flattened
+    return []
 
 
 def _terminology_file_candidates(language_code: str) -> list[Path]:
@@ -358,6 +466,30 @@ def _normalize_language_code(language_code: str) -> str:
     return normalized or "de"
 
 
+def _load_terminology_payload(terminology_path: Path) -> dict[str, object]:
+    payload = json.loads(terminology_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return {"language": "de", "terms": {}, "patterns": {}}
+    return payload
+
+
+def _flatten_pattern_sections(payload: object) -> list[ReplacementPattern]:
+    if not isinstance(payload, dict):
+        return []
+    flattened: list[ReplacementPattern] = []
+    for section, section_payload in payload.items():
+        if not isinstance(section_payload, dict):
+            continue
+        for source_text, target_text in sorted(section_payload.items(), key=lambda item: (-len(str(item[0])), str(item[0]).lower())):
+            if isinstance(target_text, dict):
+                continue
+            source = str(source_text).strip()
+            target = str(target_text).strip()
+            if source and target:
+                flattened.append(ReplacementPattern(source_text=source, target_text=target, section=str(section)))
+    return flattened
+
+
 def _translate_colon_label_line(text: str, term_map: dict[str, str]) -> str:
     label, separator, value = text.partition(":")
     if separator != ":":
@@ -369,6 +501,128 @@ def _translate_colon_label_line(text: str, term_map: dict[str, str]) -> str:
     if not translated_label:
         return ""
     return f"{translated_label}:{value}"
+
+
+def _translate_text_segment(
+    text: str,
+    term_map: dict[str, str],
+    patterns: list[ReplacementPattern],
+) -> str:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return ""
+    if _is_prose_text(normalized):
+        return _translate_prose_text(normalized, term_map, patterns)
+    return _apply_replacements(normalized, term_map, patterns, allow_single_word_terms=True)
+
+
+def _translate_prose_text(
+    text: str,
+    term_map: dict[str, str],
+    patterns: list[ReplacementPattern],
+) -> str:
+    translated = str(text)
+    translated = _apply_pattern_replacements(translated, patterns, exact_only=False, minimum_source_length=20)
+    translated = _apply_term_replacements(translated, term_map, allow_single_word_terms=False)
+    return translated
+
+
+def _apply_replacements(
+    text: str,
+    term_map: dict[str, str],
+    patterns: list[ReplacementPattern],
+    *,
+    allow_single_word_terms: bool,
+) -> str:
+    translated = _apply_term_replacements(text, term_map, allow_single_word_terms=allow_single_word_terms)
+    translated = _apply_pattern_replacements(translated, patterns)
+    return translated
+
+
+def _apply_term_replacements(
+    text: str,
+    term_map: dict[str, str],
+    *,
+    allow_single_word_terms: bool,
+) -> str:
+    translated = str(text)
+    for source_term, target_term in term_map.items():
+        if not allow_single_word_terms and _is_single_word_term(source_term):
+            continue
+        translated = translated.replace(source_term, target_term)
+    return translated
+
+
+def _apply_pattern_replacements(
+    text: str,
+    patterns: list[ReplacementPattern],
+    *,
+    exact_only: bool = False,
+    minimum_source_length: int = 0,
+) -> str:
+    translated = str(text)
+    for pattern in patterns:
+        source_text = pattern.source_text
+        if len(source_text) < minimum_source_length:
+            continue
+        if exact_only and translated != source_text:
+            continue
+        translated = translated.replace(source_text, pattern.target_text)
+    return translated
+
+
+def _is_single_word_term(text: str) -> bool:
+    stripped = str(text).strip()
+    return bool(stripped) and " " not in stripped and ":" not in stripped
+
+
+def _is_prose_text(text: str) -> bool:
+    stripped = str(text).strip()
+    if len(stripped) >= 100:
+        return True
+    if any(marker in stripped for marker in (". ", "! ", "? ")):
+        return True
+    return stripped.endswith((".", "!", "?")) and stripped.count(" ") >= 6
+
+
+def _looks_like_rdl_text(text: str) -> bool:
+    normalized = str(text or "")
+    return "<TEXT>" in normalized and "</TEXT>" in normalized
+
+
+def _translate_rdl_text_nodes(
+    text: str,
+    term_map: dict[str, str],
+    patterns: list[ReplacementPattern],
+) -> str:
+    def replace(match: re.Match[str]) -> str:
+        prefix, content, suffix = match.groups()
+        translated = _translate_text_segment(content, term_map, patterns)
+        return f"{prefix}{translated}{suffix}"
+
+    return _RDL_TEXT_RE.sub(replace, text)
+
+
+def _translate_named_location_line(text: str) -> str:
+    match = _NAMED_LOCATION_RE.fullmatch(text)
+    if not match:
+        return ""
+    name = match.group("name").strip()
+    kind = match.group("kind").lower()
+    if not name:
+        return ""
+    if kind == "cloud":
+        return f"die {name}-Wolke"
+    if kind == "field":
+        return f"das {name}-Feld"
+    return ""
+
+
+def _apply_patterns(text: str, patterns: list[ReplacementPattern] | None) -> str:
+    translated = str(text or "")
+    for pattern in list(patterns or []):
+        translated = translated.replace(pattern.source_text, pattern.target_text)
+    return translated
 
 
 def _flatten_term_sections(payload: object) -> dict[str, str]:

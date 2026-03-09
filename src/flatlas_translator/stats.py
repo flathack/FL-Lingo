@@ -23,6 +23,7 @@ class CatalogStats:
 @dataclass(frozen=True, slots=True)
 class TranslationProgress:
     total: int
+    localized: int
     done: int
     skipped: int
 
@@ -52,6 +53,11 @@ def summarize_catalog(catalog: ResourceCatalog, kind: ResourceKind | None = None
 
 def calculate_translation_progress(catalog: ResourceCatalog) -> TranslationProgress:
     units = catalog.units
+    localized = sum(
+        1
+        for unit in units
+        if unit.status == RelocalizationStatus.ALREADY_LOCALIZED
+    )
     done = sum(
         1
         for unit in units
@@ -63,4 +69,4 @@ def calculate_translation_progress(catalog: ResourceCatalog) -> TranslationProgr
         }
     )
     skipped = sum(1 for unit in units if is_unit_skippable(unit))
-    return TranslationProgress(total=len(units), done=done, skipped=skipped)
+    return TranslationProgress(total=len(units), localized=localized, done=done, skipped=skipped)

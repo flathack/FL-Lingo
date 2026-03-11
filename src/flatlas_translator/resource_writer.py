@@ -11,6 +11,7 @@ import sys
 import time
 import json
 import hashlib
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -49,8 +50,12 @@ class ResourceWriter:
         self._string_reader = string_reader or DllStringTableReader()
         self._html_reader = html_reader or DllHtmlResourceReader()
 
-    def has_toolchain(self) -> bool:
+    @staticmethod
+    def is_windows() -> bool:
         return sys.platform.startswith("win")
+
+    def has_toolchain(self) -> bool:
+        return self.is_windows() or (self._resource_toolchain_commands() is not None)
 
     @staticmethod
     def backup_root(install_dir: Path) -> Path:
@@ -280,6 +285,8 @@ class ResourceWriter:
 
     @staticmethod
     def launch_toolchain_installer() -> Path:
+        if not ResourceWriter.is_windows():
+            raise RuntimeError("Toolchain installer is only available on Windows.")
         script_path = next((path for path in ResourceWriter.install_script_candidates() if path.name == "install_ids_toolchain_windows.cmd"), None)
         if script_path is None:
             raise FileNotFoundError("Toolchain installer script not found.")
@@ -288,6 +295,8 @@ class ResourceWriter:
 
     @staticmethod
     def install_file_association() -> Path:
+        if not ResourceWriter.is_windows():
+            raise RuntimeError("File association setup is only available on Windows.")
         script_path = next((path for path in ResourceWriter.install_script_candidates() if path.name == "install_fllingo_file_association.cmd"), None)
         if script_path is None:
             raise FileNotFoundError("File association installer script not found.")
@@ -382,9 +391,6 @@ class ResourceWriter:
         strings_by_local_id: dict[int, str],
         infos_by_local_id: dict[int, str] | None = None,
     ) -> tuple[bool, str]:
-        if not sys.platform.startswith("win"):
-            return False, "Resource patching is only supported on Windows."
-
         cleaned = {
             int(key): str(value).strip()
             for key, value in strings_by_local_id.items()
@@ -397,12 +403,87 @@ class ResourceWriter:
         }
         if not cleaned and not info_cleaned:
             return False, "no strings to write"
+        if not self.is_windows():
+            return self._write_resource_dll_entries_with_toolchain(dll_path, cleaned, info_cleaned)
         try:
             language_map, default_by_type = self._resource_language_map(dll_path)
             self._patch_existing_resource_dll(dll_path, cleaned, info_cleaned, language_map, default_by_type)
             return True, ""
         except Exception as exc:
             return False, str(exc)
+
+    def _write_resource_dll_entries_with_toolchain(
+        self,
+        dll_path: Path,
+        strings_by_local_id: dict[int, str],
+        infos_by_local_id: dict[int, str] | None = None,
+    ) -> tuple[bool, str]:
+        toolchain = self._resource_toolchain_commands()
+        if toolchain is None:
+            return (
+                False,
+                "No supported resource toolchain found "
+                "(need llvm-windres+lld-link, llvm-rc+lld-link, or rc.exe+link.exe)",
+            )
+
+        with tempfile.TemporaryDirectory(prefix="fllingo_ids_") as temp_dir:
+            temp_root = Path(temp_dir)
+            rc_path = temp_root / "resource.rc"
+            res_path = temp_root / "resource.res"
+            tmp_dll = temp_root / "resource.dll"
+            rc_lines = ["#pragma code_page(65001)", ""]
+            if strings_by_local_id:
+                rc_lines.extend(["STRINGTABLE", "BEGIN"])
+                for local_id in sorted(strings_by_local_id):
+                    rc_lines.append(f"    {local_id} \"{self._rc_escape_toolchain(strings_by_local_id[local_id])}\"")
+                rc_lines.extend(["END", ""])
+            for local_id in sorted(dict(infos_by_local_id or {})):
+                info_file = temp_root / f"ids_info_{local_id}.xml"
+                info_file.write_text(str(infos_by_local_id[local_id]), encoding="utf-8")
+                rc_lines.append(f'{local_id} 23 "{info_file.as_posix()}"')
+            rc_lines.append("")
+            rc_path.write_text("\n".join(rc_lines), encoding="utf-8-sig")
+            try:
+                compile_cmd, link_cmd = toolchain(str(rc_path), str(res_path), str(tmp_dll))
+                subprocess.run(
+                    compile_cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                subprocess.run(
+                    link_cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as exc:
+                message = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+                return False, message
+            try:
+                dll_path.parent.mkdir(parents=True, exist_ok=True)
+                last_error = None
+                for _attempt in range(8):
+                    try:
+                        shutil.copy2(tmp_dll, dll_path)
+                        last_error = None
+                        break
+                    except PermissionError as exc:
+                        last_error = exc
+                        time.sleep(0.15)
+                    except OSError as exc:
+                        last_error = exc
+                        if getattr(exc, "winerror", None) in (5, 32, 33, 1224):
+                            time.sleep(0.15)
+                            continue
+                        break
+                if last_error is not None:
+                    raise last_error
+            except Exception as exc:
+                return False, str(exc)
+        return True, ""
 
     def _patch_existing_resource_dll(
         self,
@@ -552,6 +633,33 @@ class ResourceWriter:
                     pieces.append(f"\\u{codepoint:04X}")
                 else:
                     pieces.append(f"\\U{codepoint:08X}")
+            else:
+                pieces.append(char)
+        return "".join(pieces)
+
+    @staticmethod
+    def _rc_escape_toolchain(text: str) -> str:
+        value = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+        pieces: list[str] = []
+        for char in value:
+            codepoint = ord(char)
+            if char == "\"":
+                pieces.append("\"\"")
+            elif char == "\\":
+                pieces.append("\\\\")
+            elif char == "\n":
+                pieces.append("\\n")
+            elif char == "\t":
+                pieces.append("\\t")
+            elif codepoint < 32:
+                pieces.append(f"\\x{codepoint:02X}")
+            elif codepoint > 127:
+                try:
+                    encoded = char.encode("cp1252")
+                except UnicodeEncodeError:
+                    pieces.append(char)
+                else:
+                    pieces.extend(f"\\x{byte:02X}" for byte in encoded)
             else:
                 pieces.append(char)
         return "".join(pieces)

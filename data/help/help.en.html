@@ -77,6 +77,11 @@
     for example a German vanilla install.
   </div>
 
+  <div class="tip">
+    FL Lingo has two UI modes. <b>Simple Mode</b> is the guided three-column workflow for scanning and translating.
+    <b>Expert Mode</b> exposes the full editor, DLL analysis, terminology, filters, import/export, and project controls.
+  </div>
+
   <div class="toc">
     <b>Contents</b>
     <ul>
@@ -102,7 +107,7 @@
   <ol>
     <li>Select <b>Game with mod / current game</b>.</li>
     <li>Select <b>Reference install / comparison game</b>.</li>
-    <li>Run <b>Compare with reference</b>.</li>
+    <li>Either use <b>Start scan</b> in Simple Mode or <b>Compare with reference</b> in Expert Mode.</li>
     <li>Review the result using the purple, green, yellow, and gray progress states.</li>
     <li><b>Export open entries</b> if the mod contains new text that still needs translation.</li>
     <li>Translate that file externally or use the editor for individual entries.</li>
@@ -271,6 +276,13 @@ Rikyu Asari</pre>
   <div class="warn">
     If you work against a live game installation, always test new translation runs on a copy first.
   </div>
+
+  <h2>Platform status</h2>
+  <ul>
+    <li><b>Windows</b>: full desktop workflow, including applying translations into DLLs.</li>
+    <li><b>Linux</b>: same main workflow, including compare, export/import, project files, backups, and applying translations.</li>
+    <li>The remaining platform risk is not a missing feature, but real-world validation across more mods and DLL layouts.</li>
+  </ul>
 
   <h2>Limits of automation</h2>
   <p>FL Lingo is intentionally not a full machine translator. The main limits are:</p>

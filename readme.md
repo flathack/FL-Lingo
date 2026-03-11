@@ -32,12 +32,14 @@ FL Lingo will then:
 
 ## Current Features
 
-- desktop application for Windows
+- desktop application for Windows and Linux
+- simple mode for a guided three-column workflow
+- expert mode for filters, DLL analysis, manual edits, and terminology work
 - source and target language selection
 - compare current install and reference install
 - DLL-level safety analysis
 - main workflow for export, import, preview, and apply
-- separate editor tab for manual corrections
+- separate editor workspace for open translations and manual corrections
 - progress display for translated and skipped entries
 - terminology files per target language
 - project save and load via `.FLLingo`
@@ -73,6 +75,11 @@ Typical relevant files include:
 - `OfferBribeResources.dll`
 
 ## Workflow
+
+FL Lingo currently exposes two UI modes:
+
+- `Simple Mode`: choose both installs, run the scan, then translate
+- `Expert Mode`: full workflow with editor, filters, DLL analysis, terminology, import/export, and project controls
 
 ### 1. Load the current game
 
@@ -170,20 +177,36 @@ Still recommended:
 Requirements:
 
 - Python 3.11+
-- Windows
+- Windows or Linux
+
+Current platform status:
+
+- Windows: full workflow including compare, export/import, and applying translations back into Freelancer DLLs
+- Linux: same main desktop workflow, including compare, export/import, project files, terminology, DLL analysis, backups, and apply
+- Current caveat on Linux: broader real-world validation across more mods is still ongoing
 
 Setup:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e .[all]
+```
+
+Run:
+
+```bash
+python launch.py
+```
+
+Windows PowerShell variant:
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install -e .[dev,ui]
-```
-
-Run:
-
-```powershell
+python -m pip install -e .[all]
 python launch.py
 ```
 
@@ -196,7 +219,14 @@ If you use a packaged release, launch the included `FL-Lingo.exe`.
 Project layout:
 
 - `launch.py`: local launcher and central app defaults
-- `src/flatlas_translator/ui_app.py`: main desktop UI
+- `src/flatlas_translator/ui_app.py`: main window entry point
+- `src/flatlas_translator/ui_builders.py`: widget and page construction
+- `src/flatlas_translator/ui_state.py`: UI state and refresh logic
+- `src/flatlas_translator/ui_editor.py`: editor and terminology interactions
+- `src/flatlas_translator/ui_workflows.py`: import/export, project, help, and update workflows
+- `src/flatlas_translator/ui_session.py`: session, catalog, and apply controller logic
+- `src/flatlas_translator/ui_chrome.py`: window title, retranslate, status, and footer helpers
+- `src/flatlas_translator/ui_strings.py`: built-in UI text and shared URLs
 - `src/flatlas_translator/catalog.py`: catalog loading and pairing
 - `src/flatlas_translator/dll_resources.py`: resource extraction from DLLs
 - `src/flatlas_translator/resource_writer.py`: write/apply logic
@@ -209,9 +239,32 @@ Project layout:
 
 Run tests:
 
+```bash
+.venv/bin/python -m pytest
+```
+
+Run GUI smoke tests explicitly:
+
+```bash
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_ui_smoke.py
+```
+
+Windows PowerShell:
+
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
+
+The development environment now includes `pytest-qt`, and the test suite contains headless GUI smoke tests for:
+
+- app startup
+- simple/expert mode switching
+- language switching
+- default editor filters
+- workspace and apply button enablement
+- project load and apply-resume UI state
+- settings/theme application
+- simple-mode status transitions
 
 ## Building
 
@@ -232,7 +285,11 @@ FL Lingo is already usable as a desktop tool for:
 - editing entries manually
 - applying translations back into the game
 
-The main area that still depends heavily on real-world testing is broader validation across different Freelancer mods and resource variations.
+The main areas that still need the most work are:
+
+- broader validation across different Freelancer mods and resource variations
+- GUI smoke tests for mode switching, filtering, and language changes
+- documentation and help text polish for first-time users
 
 ## Roadmap
 

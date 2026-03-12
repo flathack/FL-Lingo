@@ -60,7 +60,7 @@ class TranslatorMainWindow(UIBuildMixin, UIStateMixin, UIEditorMixin, UISessionM
         self._source_lang_code = self._normalize_lang_code(getattr(self._config, "default_source_language", "en"), "en")
         self._target_lang_code = self._normalize_lang_code(getattr(self._config, "default_target_language", "de"), "de")
         self._startup_last_project_path: Path | None = None
-        self._settings = QSettings("FLAtlas", "FLAtlas-Translator")
+        self._settings = self._create_settings()
         self._settings_dialog_class = SettingsDialog
         self._repo_url = GITHUB_REPO_URL
         self._discord_url = DISCORD_INVITE_URL
@@ -86,6 +86,8 @@ class TranslatorMainWindow(UIBuildMixin, UIStateMixin, UIEditorMixin, UISessionM
         self._apply_active = False
         self._apply_report: ApplyReport | None = None
         self._apply_error: str | None = None
+        self._audio_progress_cache_key: tuple[str, str] | None = None
+        self._audio_progress_cache_value: tuple[int, int, int] = (0, 0, 0)
         self._setup_ui()
         self._apply_editor_default_filters(force=True)
         startup_project = getattr(self._config, "startup_project_path", None)
@@ -93,6 +95,15 @@ class TranslatorMainWindow(UIBuildMixin, UIStateMixin, UIEditorMixin, UISessionM
             self._load_project_path(Path(str(startup_project)))
         elif self._startup_last_project_path is not None:
             self._try_restore_last_project(self._startup_last_project_path)
+
+    @staticmethod
+    def _create_settings() -> QSettings:
+        xdg_config_home = str(os.environ.get("XDG_CONFIG_HOME", "") or "").strip()
+        if xdg_config_home:
+            settings_dir = Path(xdg_config_home) / "FLAtlas"
+            settings_dir.mkdir(parents=True, exist_ok=True)
+            return QSettings(str(settings_dir / "FLAtlas-Translator.ini"), QSettings.IniFormat)
+        return QSettings("FLAtlas", "FLAtlas-Translator")
 
     def _resolve_app_icon(self) -> QIcon | None:
         candidates: list[Path] = []

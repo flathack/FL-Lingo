@@ -13,6 +13,30 @@ from .terminology import clear_term_map_cache
 
 
 class UIStateMixin:
+    def _invalidate_audio_progress_cache(self) -> None:
+        self._audio_progress_cache_key = None
+        self._audio_progress_cache_value = (0, 0, 0)
+
+    def _audio_progress(self) -> tuple[int, int, int]:
+        source_path = self.source_edit.text().strip()
+        target_path = self.target_edit.text().strip()
+        cache_key = (source_path, target_path)
+        if self._audio_progress_cache_key == cache_key:
+            return self._audio_progress_cache_value
+        if not source_path or not target_path:
+            result = (0, 0, 0)
+        else:
+            source_install = Path(source_path)
+            target_install = Path(target_path)
+            if not source_install.exists() or not target_install.exists():
+                result = (0, 0, 0)
+            else:
+                progress = self._writer.audio_copy_progress(source_install, target_install)
+                result = (progress.total_files, progress.matching_files, progress.differing_files)
+        self._audio_progress_cache_key = cache_key
+        self._audio_progress_cache_value = result
+        return result
+
     def _apply_ui_mode(self, *, save: bool = True) -> None:
         if hasattr(self, "simple_mode_button"):
             self.simple_mode_button.setChecked(self._ui_mode == "simple")
@@ -44,6 +68,22 @@ class UIStateMixin:
         self._mirror_line_edit_text("simple_target_edit", target_path)
         localized, done, skipped, total, _percent, _covered_percent = self._translation_progress()
         self.simple_progress_chart.set_progress(total=total, localized=localized, done=done, skipped=skipped)
+        audio_total, audio_ready, audio_open = self._audio_progress()
+        if hasattr(self, "simple_audio_progress_bar"):
+            self.simple_audio_progress_bar.setMaximum(max(1, audio_total))
+            self.simple_audio_progress_bar.setValue(audio_ready if audio_total else 0)
+        if hasattr(self, "simple_audio_progress_label"):
+            if audio_total == 0:
+                self.simple_audio_progress_label.setText(self._tr("progress.audio.none"))
+            else:
+                self.simple_audio_progress_label.setText(
+                    self._tr("progress.audio.text").format(
+                        percent=round((audio_ready / audio_total) * 100),
+                        ready=audio_ready,
+                        total=audio_total,
+                        open=audio_open,
+                    )
+                )
 
         if self._paired_catalog is not None:
             stats = summarize_catalog(self._paired_catalog)
@@ -87,8 +127,8 @@ class UIStateMixin:
     def _default_install_path_hint(self, role: str) -> str:
         if self._writer.is_windows():
             if role == "source":
-                return r"C:\Users\STAdmin\Downloads\_FL Fresh Install-englisch"
-            return r"C:\Users\STAdmin\Downloads\_FL Fresh Install-deutsch"
+                return r"C:\Freelancer Crossfire"
+            return r"C:\Users\STAdmin\FLAtlas\FL-Installationen\_FL Fresh Install-deutsch"
         return str(Path.home())
 
     def _focus_editor_tab(self) -> None:
@@ -124,6 +164,7 @@ class UIStateMixin:
         has_toolchain = self._writer.has_toolchain()
         can_apply = has_comparison and has_toolchain and not self._apply_active
         can_simple_scan = bool(self.source_edit.text().strip()) and bool(self.target_edit.text().strip()) and not self._apply_active
+        can_audio = bool(self.source_edit.text().strip()) and bool(self.target_edit.text().strip()) and not self._apply_active
         apply_tooltip = ""
         if not has_comparison:
             apply_tooltip = self._tr("tooltip.apply_disabled_compare")
@@ -135,6 +176,8 @@ class UIStateMixin:
             self.export_mod_only_button.setEnabled(has_catalog)
             self.export_long_open_button.setEnabled(has_catalog)
             self.import_exchange_button.setEnabled(has_catalog)
+            self.copy_audio_button.setEnabled(can_audio)
+            self.assemble_patch_button.setEnabled(can_audio)
             self.apply_button.setEnabled(can_apply)
             self.apply_button.setToolTip(apply_tooltip)
         if hasattr(self, "primary_apply_button"):
@@ -144,6 +187,8 @@ class UIStateMixin:
             self.main_export_button.setEnabled(has_catalog)
             self.main_long_export_button.setEnabled(has_catalog)
             self.main_import_button.setEnabled(has_catalog)
+            self.main_copy_audio_button.setEnabled(can_audio)
+            self.main_patch_button.setEnabled(can_audio)
             self.main_apply_button.setEnabled(can_apply)
             self.main_apply_button.setToolTip(apply_tooltip)
         if hasattr(self, "root_tabs"):
@@ -158,6 +203,8 @@ class UIStateMixin:
         if hasattr(self, "simple_translate_button"):
             self.simple_translate_button.setEnabled(can_apply)
             self.simple_translate_button.setToolTip(apply_tooltip)
+        if hasattr(self, "simple_audio_copy_check"):
+            self.simple_audio_copy_check.setEnabled(can_audio)
         self._refresh_simple_mode()
 
     def _populate_dll_filter(self, catalog: ResourceCatalog | None) -> None:
@@ -212,17 +259,31 @@ class UIStateMixin:
         self.translation_progress_bar.set_progress(total=total, localized=localized, done=done, skipped=skipped)
         if total == 0:
             self.translation_progress_label.setText(self._tr("progress.none"))
-            return
-        self.translation_progress_label.setText(
-            self._tr("progress.text").format(
-                percent=covered_percent,
-                done=done + skipped,
-                total=total,
-                localized=localized,
-                available=max(0, done - localized),
-                skipped=skipped,
+        else:
+            self.translation_progress_label.setText(
+                self._tr("progress.text").format(
+                    percent=covered_percent,
+                    done=done + skipped,
+                    total=total,
+                    localized=localized,
+                    available=max(0, done - localized),
+                    skipped=skipped,
+                )
             )
-        )
+        audio_total, audio_ready, audio_open = self._audio_progress()
+        self.audio_progress_bar.setMaximum(max(1, audio_total))
+        self.audio_progress_bar.setValue(audio_ready if audio_total else 0)
+        if audio_total == 0:
+            self.audio_progress_label.setText(self._tr("progress.audio.none"))
+        else:
+            self.audio_progress_label.setText(
+                self._tr("progress.audio.text").format(
+                    percent=round((audio_ready / audio_total) * 100),
+                    ready=audio_ready,
+                    total=audio_total,
+                    open=audio_open,
+                )
+            )
 
     def _refresh_toolchain_label(self) -> None:
         toolchain_state = self._tr("toolchain.available") if self._writer.has_toolchain() else self._tr("toolchain.unavailable")

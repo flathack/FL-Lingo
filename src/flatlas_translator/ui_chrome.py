@@ -6,6 +6,17 @@ from .ui_strings import DISCORD_INVITE_URL, GITHUB_REPO_URL
 
 
 class UIChromeMixin:
+    @staticmethod
+    def _safe_format(template: str, **values: object) -> str:
+        try:
+            return str(template).format(**values)
+        except Exception:
+            fallback = "{name} | {dirty}"
+            try:
+                return fallback.format(**values)
+            except Exception:
+                return str(values.get("name", ""))
+
     def _retranslate_ui(self) -> None:
         self.menuBar().clear()
         self._setup_menu_bar()
@@ -26,6 +37,7 @@ class UIChromeMixin:
         self.simple_scan_button.setText(self._tr("simple.btn.scan"))
         self.simple_progress_legend_label.setText(self._tr("progress.legend"))
         self.simple_translate_button.setText(self._tr("btn.apply_target"))
+        self.simple_audio_copy_check.setText(self._tr("simple.audio_copy"))
         self.paths_group.setTitle(self._tr("group.installs"))
         self.simple_scan_summary_label.setText(self._tr("simple.summary.idle"))
         self.progress_group.setTitle(self._tr("group.progress"))
@@ -59,12 +71,16 @@ class UIChromeMixin:
         self.export_mod_only_button.setText(self._tr("btn.export_mod_only"))
         self.export_long_open_button.setText(self._tr("btn.export_long_open"))
         self.import_exchange_button.setText(self._tr("btn.import_exchange"))
+        self.copy_audio_button.setText(self._tr("btn.copy_audio"))
+        self.assemble_patch_button.setText(self._tr("btn.assemble_patch"))
         self.apply_button.setText(self._tr("btn.apply_target"))
         self.primary_apply_button.setText(self._tr("btn.apply_target"))
         self.toolchain_button.setText(self._tr("btn.install_toolchain"))
         self.main_export_button.setText(self._tr("btn.export_mod_only"))
         self.main_long_export_button.setText(self._tr("btn.export_long_open"))
         self.main_import_button.setText(self._tr("btn.import_exchange"))
+        self.main_copy_audio_button.setText(self._tr("btn.copy_audio"))
+        self.main_patch_button.setText(self._tr("btn.assemble_patch"))
         self.kind_label.setText(self._tr("label.kind"))
         self.status_label.setText(self._tr("label.status"))
         self.search_label.setText(self._tr("label.search"))
@@ -117,7 +133,7 @@ class UIChromeMixin:
             self._project_path.name if self._project_path is not None else self._tr("project.none")
         )
         project_state = self._tr("project.unsaved") if self._is_project_dirty() else self._tr("project.saved")
-        project_info = self._tr("project.info").format(name=resolved_project_name, dirty=project_state)
+        project_info = self._safe_format(self._tr("project.info"), name=resolved_project_name, dirty=project_state)
         self.setWindowTitle(f"{self._config.app_title} v{self._config.app_version} | {project_info}")
 
     def _show_error(self, message: str) -> None:

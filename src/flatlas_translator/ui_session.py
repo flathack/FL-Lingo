@@ -201,6 +201,41 @@ class UISessionMixin:
             self._set_status(f"Applied {self._target_lang_code}: {report.replaced_units} entries, backup at {report.backup_dir}")
         else:
             self._set_status(f"{self._target_lang_code} angewendet: {report.replaced_units} Einträge, Backup unter {report.backup_dir}")
+        resolved = self._resolve_source_and_reference_installs()
+        if resolved is not None:
+            source_install, reference_install = resolved
+            audio_candidates = self._writer.list_audio_copy_candidates(source_install, reference_install)
+            if audio_candidates:
+                auto_copy_audio = (
+                    hasattr(self, "simple_audio_copy_check")
+                    and self._ui_mode == "simple"
+                    and self.simple_audio_copy_check.isChecked()
+                )
+                if auto_copy_audio:
+                    self._copy_reference_audio_candidates(
+                        source_install,
+                        reference_install,
+                        audio_candidates,
+                        backup_dir=report.backup_dir,
+                    )
+                else:
+                    reply = QMessageBox.question(
+                        self,
+                        self._tr("dialog.copy_audio_title"),
+                        self._tr("dialog.copy_audio_offer").format(
+                            count=len(audio_candidates),
+                            backup=report.backup_dir,
+                        ),
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes,
+                    )
+                    if reply == QMessageBox.Yes:
+                        self._copy_reference_audio_candidates(
+                            source_install,
+                            reference_install,
+                            audio_candidates,
+                            backup_dir=report.backup_dir,
+                        )
         self._load_source_catalog()
         self._load_compare_catalog()
 
@@ -311,6 +346,7 @@ class UISessionMixin:
         self._target_catalog = None
         self._dll_plans = []
         self._saved_project_signature = None
+        self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
         self._refresh_dll_plan_table()
         self._populate_dll_filter(self._source_catalog)
@@ -355,6 +391,7 @@ class UISessionMixin:
             self._show_error(self._tr("error.compare_failed").format(error=exc))
             return
 
+        self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
         self._refresh_dll_plan_table()
         self._populate_dll_filter(self._paired_catalog)
@@ -410,6 +447,7 @@ class UISessionMixin:
         self._dll_plans = []
         self._visible_units = []
         self.include_infocards_check.setChecked(True)
+        self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
         self._populate_dll_filter(None)
         self._refresh_dll_plan_table()

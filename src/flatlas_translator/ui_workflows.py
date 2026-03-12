@@ -33,6 +33,17 @@ from .translation_exchange import export_long_open_exchange, export_mod_only_exc
 
 
 class UIWorkflowMixin:
+    def _resolve_source_and_reference_installs(self) -> tuple[Path, Path] | None:
+        source_install = Path(self.source_edit.text().strip())
+        reference_install = Path(self.target_edit.text().strip())
+        if not source_install.exists():
+            self._show_error(self._tr("error.source_missing").format(path=source_install))
+            return None
+        if not reference_install.exists():
+            self._show_error(self._tr("error.target_missing").format(path=reference_install))
+            return None
+        return source_install, reference_install
+
     def _export_visible_json(self) -> None:
         catalog = self._current_catalog()
         if catalog is None:
@@ -393,6 +404,115 @@ class UIWorkflowMixin:
             self._set_status(f"{manual_count} manual translations loaded: {input_path}")
         else:
             self._set_status(f"{manual_count} manuelle Übersetzungen geladen: {input_path}")
+
+    def _copy_reference_audio_files(self) -> None:
+        resolved = self._resolve_source_and_reference_installs()
+        if resolved is None:
+            return
+        source_install, reference_install = resolved
+        candidates = self._writer.list_audio_copy_candidates(source_install, reference_install)
+        if not candidates:
+            self._show_error(self._tr("error.no_audio_candidates"))
+            return
+        reply = QMessageBox.question(
+            self,
+            self._tr("dialog.copy_audio_title"),
+            self._tr("dialog.copy_audio_offer").format(
+                count=len(candidates),
+                backup=self._writer.backup_root(source_install),
+            ),
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._copy_reference_audio_candidates(source_install, reference_install, candidates)
+
+    def _copy_reference_audio_candidates(
+        self,
+        source_install: Path,
+        reference_install: Path,
+        candidates,
+        *,
+        backup_dir: Path | None = None,
+    ) -> int:
+        try:
+            report = self._run_with_progress(
+                self._tr("dialog.copy_audio_title"),
+                self._tr("progress.copy_audio"),
+                lambda: self._writer.copy_reference_audio(
+                    source_install,
+                    reference_install,
+                    candidates=tuple(candidates),
+                    backup_dir=backup_dir,
+                ),
+            )
+        except Exception as exc:
+            self._show_error(self._tr("error.audio_copy_failed").format(error=exc))
+            return 0
+        QMessageBox.information(
+            self,
+            self._tr("dialog.copy_audio_title"),
+            self._tr("dialog.copy_audio_success").format(
+                count=len(report.copied_files),
+                backup=report.backup_dir,
+            ),
+        )
+        self._invalidate_audio_progress_cache()
+        self._set_status(self._tr("status.audio_copied").format(count=len(report.copied_files)))
+        return len(report.copied_files)
+
+    def _assemble_patch_bundle(self) -> None:
+        resolved = self._resolve_source_and_reference_installs()
+        if resolved is None:
+            return
+        source_install, reference_install = resolved
+        dll_paths = tuple(
+            sorted(
+                {unit.source.dll_path for unit in self._apply_candidate_units()},
+                key=lambda path: path.name.lower(),
+            )
+        )
+        audio_candidates = self._writer.list_audio_copy_candidates(source_install, reference_install)
+
+        output_path = QFileDialog.getExistingDirectory(
+            self,
+            self._tr("dialog.assemble_patch_title"),
+            str(Path.cwd() / "build" / "patch-package"),
+        )
+        if not output_path:
+            return
+        try:
+            report = self._run_with_progress(
+                self._tr("dialog.assemble_patch_title"),
+                self._tr("progress.assemble_patch"),
+                lambda: self._writer.assemble_install_patch(
+                    source_install,
+                    Path(output_path),
+                    dll_paths=dll_paths,
+                    audio_candidates=audio_candidates,
+                ),
+            )
+        except RuntimeError as exc:
+            message = str(exc)
+            if "No files available" in message:
+                self._show_error(self._tr("error.no_patch_files"))
+            else:
+                self._show_error(self._tr("error.patch_assemble_failed").format(error=exc))
+            return
+        except Exception as exc:
+            self._show_error(self._tr("error.patch_assemble_failed").format(error=exc))
+            return
+        QMessageBox.information(
+            self,
+            self._tr("dialog.assemble_patch_title"),
+            self._tr("dialog.assemble_patch_success").format(
+                count=len(report.copied_files),
+                path=report.output_dir,
+                manifest=report.manifest_path,
+            ),
+        )
+        self._set_status(self._tr("status.patch_assembled").format(path=report.output_dir))
 
     def _apply_target_to_install(self) -> None:
         if self._apply_active:

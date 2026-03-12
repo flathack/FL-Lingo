@@ -267,3 +267,13 @@ def test_simple_mode_status_transitions_from_idle_to_loaded(qtbot, monkeypatch, 
     assert window.simple_scan_summary_label.text() == window._tr("simple.summary.source_loaded")
     assert window.simple_translate_summary_label.text() == window._tr("simple.summary.source_loaded")
     assert window.simple_scan_button.isEnabled()
+
+
+def test_refresh_window_title_tolerates_bad_project_info_placeholder(qtbot, monkeypatch, tmp_path: Path) -> None:
+    window = _make_window(qtbot, monkeypatch, tmp_path)
+    original_tr = window._tr
+    window._tr = lambda key: "{name} | {manual}" if key == "project.info" else original_tr(key)
+
+    window._refresh_window_title("demo.FLLingo")
+
+    assert "demo.FLLingo" in window.windowTitle()

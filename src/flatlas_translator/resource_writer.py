@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 from ctypes import wintypes
+import filecmp
 import os
 import shutil
 import subprocess
@@ -40,7 +41,38 @@ class ApplySessionInfo:
     last_error: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class AudioCopyCandidate:
+    relative_path: Path
+    source_path: Path
+    target_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class AudioCopyReport:
+    backup_dir: Path
+    copied_files: tuple[Path, ...]
+    created_files: tuple[Path, ...]
+    candidates: tuple[AudioCopyCandidate, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PatchAssemblyReport:
+    output_dir: Path
+    copied_files: tuple[Path, ...]
+    manifest_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class AudioCopyProgress:
+    total_files: int
+    matching_files: int
+    differing_files: int
+
+
 class ResourceWriter:
+    AUDIO_DIALOGUE_ROOT = Path("DATA") / "AUDIO" / "DIALOGUE"
+
     def __init__(
         self,
         *,
@@ -81,15 +113,146 @@ class ResourceWriter:
         if not backup_dir.is_dir():
             raise FileNotFoundError(f"Backup dir not found: {backup_dir}")
         written_files: list[Path] = []
-        for dll_path in backup_dir.glob("*.dll"):
-            target_path = install_dir / "EXE" / dll_path.name
+        for backup_path in sorted(path for path in backup_dir.rglob("*") if path.is_file()):
+            rel_path = backup_path.relative_to(backup_dir)
+            if rel_path.parent == Path(".") and backup_path.suffix.lower() == ".dll":
+                target_path = install_dir / "EXE" / backup_path.name
+            else:
+                target_path = install_dir / rel_path
             if not target_path.parent.is_dir():
                 target_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(dll_path, target_path)
+            shutil.copy2(backup_path, target_path)
             written_files.append(target_path)
         if not written_files:
-            raise RuntimeError("Backup does not contain any DLL files.")
+            raise RuntimeError("Backup does not contain any restorable files.")
         return tuple(written_files)
+
+    def list_audio_copy_candidates(
+        self,
+        install_dir: Path,
+        reference_install_dir: Path,
+    ) -> tuple[AudioCopyCandidate, ...]:
+        install_dir = Path(install_dir)
+        reference_install_dir = Path(reference_install_dir)
+        candidates: list[AudioCopyCandidate] = []
+        for source_path in self._reference_audio_files(reference_install_dir):
+            relative_path = source_path.relative_to(reference_install_dir)
+            target_path = install_dir / relative_path
+            if target_path.is_file() and filecmp.cmp(str(source_path), str(target_path), shallow=False):
+                continue
+            candidates.append(
+                AudioCopyCandidate(
+                    relative_path=relative_path,
+                    source_path=source_path,
+                    target_path=target_path,
+                )
+            )
+        return tuple(candidates)
+
+    def audio_copy_progress(self, install_dir: Path, reference_install_dir: Path) -> AudioCopyProgress:
+        install_dir = Path(install_dir)
+        reference_install_dir = Path(reference_install_dir)
+        reference_files = self._reference_audio_files(reference_install_dir)
+        if not reference_files:
+            return AudioCopyProgress(total_files=0, matching_files=0, differing_files=0)
+        differing_files = 0
+        for source_path in reference_files:
+            relative_path = source_path.relative_to(reference_install_dir)
+            target_path = install_dir / relative_path
+            if target_path.is_file() and filecmp.cmp(str(source_path), str(target_path), shallow=False):
+                continue
+            differing_files += 1
+        total_files = len(reference_files)
+        return AudioCopyProgress(
+            total_files=total_files,
+            matching_files=max(0, total_files - differing_files),
+            differing_files=differing_files,
+        )
+
+    def copy_reference_audio(
+        self,
+        install_dir: Path,
+        reference_install_dir: Path,
+        *,
+        candidates: tuple[AudioCopyCandidate, ...] | None = None,
+        backup_dir: Path | None = None,
+    ) -> AudioCopyReport:
+        install_dir = Path(install_dir)
+        chosen = tuple(candidates or self.list_audio_copy_candidates(install_dir, reference_install_dir))
+        if not chosen:
+            raise RuntimeError("No differing reference voice files found.")
+        resolved_backup_dir = Path(backup_dir) if backup_dir is not None else self._make_backup_dir(install_dir, None)
+        copied_files: list[Path] = []
+        created_files: list[Path] = []
+        for candidate in chosen:
+            target_path = install_dir / candidate.relative_path
+            if target_path.exists():
+                backup_path = resolved_backup_dir / candidate.relative_path
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                if not backup_path.exists():
+                    shutil.copy2(target_path, backup_path)
+            else:
+                created_files.append(target_path)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(candidate.source_path, target_path)
+            copied_files.append(target_path)
+        return AudioCopyReport(
+            backup_dir=resolved_backup_dir,
+            copied_files=tuple(copied_files),
+            created_files=tuple(created_files),
+            candidates=chosen,
+        )
+
+    def assemble_install_patch(
+        self,
+        install_dir: Path,
+        output_dir: Path,
+        *,
+        dll_paths: tuple[Path, ...] | None = None,
+        audio_candidates: tuple[AudioCopyCandidate, ...] | None = None,
+    ) -> PatchAssemblyReport:
+        install_dir = Path(install_dir)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        planned_files: dict[str, tuple[Path, Path]] = {}
+        for dll_path in tuple(dll_paths or ()):
+            resolved_dll = Path(dll_path)
+            rel_path = self._relative_install_path(install_dir, resolved_dll)
+            if not resolved_dll.is_file():
+                continue
+            planned_files[rel_path.as_posix().lower()] = (resolved_dll, rel_path)
+
+        for candidate in tuple(audio_candidates or ()):
+            current_path = install_dir / candidate.relative_path
+            if not current_path.is_file():
+                continue
+            planned_files[candidate.relative_path.as_posix().lower()] = (current_path, candidate.relative_path)
+
+        if not planned_files:
+            raise RuntimeError("No files available for patch assembly.")
+
+        copied_files: list[Path] = []
+        for _key, (source_path, rel_path) in sorted(planned_files.items(), key=lambda item: item[1][1].as_posix().lower()):
+            destination_path = output_dir / rel_path
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_path, destination_path)
+            copied_files.append(destination_path)
+
+        manifest_path = output_dir / "FLAtlas-Translator-Patch.json"
+        manifest = {
+            "format": "flatlas-translator-patch",
+            "version": 1,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "install_dir": str(install_dir),
+            "files": [path.relative_to(output_dir).as_posix() for path in copied_files],
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+        return PatchAssemblyReport(
+            output_dir=output_dir,
+            copied_files=tuple(copied_files),
+            manifest_path=manifest_path,
+        )
 
     def load_apply_session(self, catalog: ResourceCatalog, *, units=None) -> ApplySessionInfo | None:
         selected_units = list(units if units is not None else catalog.units)
@@ -611,6 +774,23 @@ class ResourceWriter:
     @staticmethod
     def _resource_id(value: int) -> ctypes.c_void_p:
         return ctypes.c_void_p(int(value))
+
+    @staticmethod
+    def _relative_install_path(install_dir: Path, file_path: Path) -> Path:
+        install_dir = Path(install_dir)
+        file_path = Path(file_path)
+        try:
+            return file_path.relative_to(install_dir)
+        except ValueError:
+            if file_path.suffix.lower() == ".dll":
+                return Path("EXE") / file_path.name
+            return Path(file_path.name)
+
+    def _reference_audio_files(self, reference_install_dir: Path) -> list[Path]:
+        reference_audio_root = Path(reference_install_dir) / self.AUDIO_DIALOGUE_ROOT
+        if not reference_audio_root.is_dir():
+            return []
+        return sorted(path for path in reference_audio_root.rglob("*") if path.is_file())
 
     @staticmethod
     def _rc_escape(text: str) -> str:

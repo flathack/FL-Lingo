@@ -196,6 +196,7 @@ class UIWorkflowMixin:
         self._dll_plans = list(project.dll_plans)
         self._apply_editor_default_filters(force=True)
         self._saved_project_signature = self._current_project_signature()
+        self._refresh_old_text_backup_options()
         self._populate_dll_filter(self._current_catalog())
         self._refresh_dll_plan_table()
         self._refresh_table()

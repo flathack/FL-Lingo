@@ -564,6 +564,13 @@ class UIBuildMixin:
         layout.addWidget(self.editor_help_label)
         layout.addWidget(self.editor_missing_label)
         layout.addWidget(self.editor_missing_detail_label)
+        backup_row = QHBoxLayout()
+        self.old_text_source_label = QLabel(self._tr("editor.old_text_source"))
+        self.old_text_backup_combo = QComboBox()
+        self.old_text_backup_combo.currentIndexChanged.connect(self._handle_old_text_backup_changed)
+        backup_row.addWidget(self.old_text_source_label)
+        backup_row.addWidget(self.old_text_backup_combo, 1)
+        layout.addLayout(backup_row)
         layout.addWidget(self._build_filters_group())
         layout.addWidget(self._build_main_splitter(), 1)
         self._refresh_editor_status()
@@ -721,7 +728,7 @@ class UIBuildMixin:
         self.summary_label.setWordWrap(True)
         left_layout.addWidget(self.summary_label)
 
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
             [
                 self._tr("table.units.kind"),
@@ -731,6 +738,7 @@ class UIBuildMixin:
                 self._tr("table.units.status"),
                 self._tr("table.units.changed"),
                 self._tr("table.units.preview"),
+                self._tr("table.units.old_text"),
             ]
         )
         self.table.setSelectionBehavior(QTableWidget.SelectRows)

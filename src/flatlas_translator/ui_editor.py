@@ -12,6 +12,10 @@ from .translation_exchange import update_manual_translation
 
 
 class UIEditorMixin:
+    def _old_text_for_unit(self, unit: TranslationUnit) -> str:
+        key = (str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id))
+        return self._old_text_lookup.get(key, unit.source_text)
+
     def _update_summary(self, catalog: ResourceCatalog, visible_units: list[TranslationUnit]) -> None:
         total = len(catalog.units)
         visible = len(visible_units)

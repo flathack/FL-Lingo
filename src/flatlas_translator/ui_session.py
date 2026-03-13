@@ -12,6 +12,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QFileDialog, QLineEdit, QMessageBox, QTableWidgetItem
 
 from .catalog import pair_catalogs
+from .dll_resources import DllHtmlResourceReader, DllStringTableReader
 from .dll_plans import build_dll_plans
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
 from .project_io import TranslatorProject, project_signature
@@ -21,6 +22,77 @@ from .ui_themes import THEMES
 
 
 class UISessionMixin:
+    def _backup_host_install_dir(self) -> Path | None:
+        if self._source_catalog is not None:
+            return self._source_catalog.install_dir
+        source_text = self.source_edit.text().strip()
+        return Path(source_text) if source_text else None
+
+    def _refresh_old_text_backup_options(self) -> None:
+        if not hasattr(self, "old_text_backup_combo"):
+            return
+        install_dir = self._backup_host_install_dir()
+        backups = self._writer.list_backups(install_dir) if install_dir is not None and install_dir.exists() else []
+        current_data = self.old_text_backup_combo.currentData()
+        self.old_text_backup_combo.blockSignals(True)
+        self.old_text_backup_combo.clear()
+        self.old_text_backup_combo.addItem(self._tr("editor.old_text_current"), "")
+        for backup_dir in backups:
+            self.old_text_backup_combo.addItem(backup_dir.name, str(backup_dir))
+        index = self.old_text_backup_combo.findData(current_data)
+        self.old_text_backup_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.old_text_backup_combo.setEnabled(self._current_catalog() is not None)
+        self.old_text_backup_combo.blockSignals(False)
+        self._load_old_text_backup_lookup()
+
+    def _handle_old_text_backup_changed(self) -> None:
+        self._load_old_text_backup_lookup()
+        self._refresh_table()
+
+    def _load_old_text_backup_lookup(self) -> None:
+        if not hasattr(self, "old_text_backup_combo"):
+            return
+        selected = str(self.old_text_backup_combo.currentData() or "").strip()
+        self._old_text_backup_dir = Path(selected) if selected else None
+        catalog = self._current_catalog()
+        if catalog is None or self._old_text_backup_dir is None:
+            self._old_text_lookup = {}
+            return
+        self._old_text_lookup = self._build_old_text_lookup(
+            catalog,
+            self._old_text_backup_dir,
+            string_reader=DllStringTableReader(),
+            html_reader=DllHtmlResourceReader(),
+        )
+
+    @staticmethod
+    def _build_old_text_lookup(
+        catalog: ResourceCatalog,
+        backup_dir: Path,
+        *,
+        string_reader: DllStringTableReader,
+        html_reader: DllHtmlResourceReader,
+    ) -> dict[tuple[str, str, int], str]:
+        lookup: dict[tuple[str, str, int], str] = {}
+        requested: dict[str, set[tuple[str, int]]] = {}
+        for unit in catalog.units:
+            requested.setdefault(unit.source.dll_name.lower(), set()).add((str(unit.kind), int(unit.source.local_id)))
+
+        for dll_name, keys in requested.items():
+            backup_path = Path(backup_dir) / Path(dll_name).name
+            if not backup_path.is_file():
+                continue
+            string_map = string_reader.read_strings(backup_path)
+            info_map = html_reader.read_html_resources(backup_path)
+            for kind, local_id in keys:
+                if kind == str(ResourceKind.STRING):
+                    text = string_map.get(local_id)
+                else:
+                    text = info_map.get(local_id)
+                if text:
+                    lookup[(kind, dll_name, local_id)] = text
+        return lookup
+
     def _apply_editor_default_filters(self, *, force: bool = False) -> None:
         desired_status = str(RelocalizationStatus.MOD_ONLY)
         current_status = self.status_combo.currentData()
@@ -346,8 +418,10 @@ class UISessionMixin:
         self._target_catalog = None
         self._dll_plans = []
         self._saved_project_signature = None
+        self._old_text_lookup = {}
         self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
+        self._refresh_old_text_backup_options()
         self._refresh_dll_plan_table()
         self._populate_dll_filter(self._source_catalog)
         self._refresh_table()
@@ -393,6 +467,7 @@ class UISessionMixin:
 
         self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
+        self._refresh_old_text_backup_options()
         self._refresh_dll_plan_table()
         self._populate_dll_filter(self._paired_catalog)
         self._refresh_table()
@@ -446,9 +521,12 @@ class UISessionMixin:
         self._paired_catalog = None
         self._dll_plans = []
         self._visible_units = []
+        self._old_text_backup_dir = None
+        self._old_text_lookup = {}
         self.include_infocards_check.setChecked(True)
         self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
+        self._refresh_old_text_backup_options()
         self._populate_dll_filter(None)
         self._refresh_dll_plan_table()
         self._refresh_table()
@@ -523,7 +601,9 @@ class UISessionMixin:
             units = [
                 unit
                 for unit in units
-                if search_value in unit.source_text.lower() or search_value in unit.replacement_text.lower()
+                if search_value in unit.source_text.lower()
+                or search_value in self._old_text_for_unit(unit).lower()
+                or search_value in unit.replacement_text.lower()
             ]
 
         self._visible_units = units
@@ -537,6 +617,7 @@ class UISessionMixin:
                 self._status_text(unit.status),
                 self._tr("yes") if unit.is_changed else self._tr("no"),
                 " ".join(unit.source_text.split())[:120],
+                " ".join(self._old_text_for_unit(unit).split())[:120],
             ]
             for column, value in enumerate(values):
                 self.table.setItem(row, column, QTableWidgetItem(value))

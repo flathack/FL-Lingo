@@ -88,6 +88,8 @@ class TranslatorMainWindow(UIBuildMixin, UIStateMixin, UIEditorMixin, UISessionM
         self._apply_error: str | None = None
         self._audio_progress_cache_key: tuple[str, str] | None = None
         self._audio_progress_cache_value: tuple[int, int, int] = (0, 0, 0)
+        self._old_text_backup_dir: Path | None = None
+        self._old_text_lookup: dict[tuple[str, str, int], str] = {}
         self._setup_ui()
         self._apply_editor_default_filters(force=True)
         startup_project = getattr(self._config, "startup_project_path", None)

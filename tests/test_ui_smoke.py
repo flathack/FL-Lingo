@@ -84,6 +84,28 @@ def test_language_switch_retranslates_ui(qtbot, monkeypatch, tmp_path: Path) -> 
     assert window.root_tabs.tabText(1) == "Bearbeitung"
 
 
+def test_editor_table_shows_current_and_old_text_columns(qtbot, monkeypatch, tmp_path: Path) -> None:
+    window = _make_window(qtbot, monkeypatch, tmp_path)
+    source = _location("resources.dll", 100)
+    target = _location("resources.dll", 100, slot=2)
+    unit = TranslationUnit(
+        kind=ResourceKind.STRING,
+        source=source,
+        source_text="Original English text",
+        target=target,
+        target_text="Deutscher Text",
+    )
+    window._paired_catalog = _catalog(unit)
+    window._populate_dll_filter(window._paired_catalog)
+    window._refresh_table()
+
+    assert window.table.columnCount() == 8
+    assert window.table.horizontalHeaderItem(6).text() == window._tr("table.units.preview")
+    assert window.table.horizontalHeaderItem(7).text() == window._tr("table.units.old_text")
+    assert window.table.item(0, 6).text() == "Deutscher Text"
+    assert window.table.item(0, 7).text() == "Original English text"
+
+
 def test_action_state_with_source_catalog_enables_workspace_but_not_apply(qtbot, monkeypatch, tmp_path: Path) -> None:
     window = _make_window(qtbot, monkeypatch, tmp_path)
     unit = TranslationUnit(

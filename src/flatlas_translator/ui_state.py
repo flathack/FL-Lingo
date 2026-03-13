@@ -309,6 +309,7 @@ class UIStateMixin:
                 self._tr("table.units.status"),
                 self._tr("table.units.changed"),
                 self._tr("table.units.preview"),
+                self._tr("table.units.old_text"),
             ]
         )
 

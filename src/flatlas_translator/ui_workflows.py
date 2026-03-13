@@ -26,6 +26,7 @@ from .catalog import pair_catalogs
 from .dll_plans import DllStrategy, build_dll_plans
 from .exporters import export_catalog_json
 from .localization import resolve_help_file
+from .mod_overrides import apply_mod_overrides
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
 from .project_io import PROJECT_FILE_EXTENSION, load_project, project_signature, save_project
 from .terminology import apply_known_term_suggestions, clear_term_map_cache, resolve_terminology_file
@@ -189,13 +190,16 @@ class UIWorkflowMixin:
         self._source_catalog = project.source_catalog
         self._target_catalog = project.target_catalog
         self._paired_catalog = (
-            apply_known_term_suggestions(project.paired_catalog, target_language=self._target_lang_code)
+            apply_mod_overrides(
+                apply_known_term_suggestions(project.paired_catalog, target_language=self._target_lang_code)
+            )
             if project.paired_catalog is not None
             else None
         )
         self._dll_plans = list(project.dll_plans)
         self._apply_editor_default_filters(force=True)
         self._saved_project_signature = self._current_project_signature()
+        self._refresh_mod_override_entries()
         self._refresh_old_text_backup_options()
         self._populate_dll_filter(self._current_catalog())
         self._refresh_dll_plan_table()
@@ -394,11 +398,12 @@ class UIWorkflowMixin:
         except Exception as exc:
             self._show_error(self._tr("error.import_failed").format(error=exc))
             return
-        merged = apply_known_term_suggestions(merged, target_language=self._target_lang_code)
+        merged = apply_mod_overrides(apply_known_term_suggestions(merged, target_language=self._target_lang_code))
         if self._paired_catalog is not None:
             self._paired_catalog = merged
         else:
             self._source_catalog = merged
+        self._refresh_mod_override_entries()
         self._refresh_table()
         manual_count = sum(1 for unit in merged.units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION)
         if self._lang == "en":

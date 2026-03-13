@@ -202,6 +202,7 @@ class UIStateMixin:
             self.editor_tabs.setTabEnabled(0, has_catalog)
             self.editor_tabs.setTabEnabled(1, has_comparison)
             self.editor_tabs.setTabEnabled(2, has_catalog)
+            self.editor_tabs.setTabEnabled(3, has_catalog)
         if hasattr(self, "simple_scan_button"):
             self.simple_scan_button.setEnabled(can_simple_scan)
         if hasattr(self, "simple_translate_button"):

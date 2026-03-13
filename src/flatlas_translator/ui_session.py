@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QLineEdit, QMessageBox,
 from .catalog import pair_catalogs
 from .dll_resources import DllHtmlResourceReader, DllStringTableReader
 from .dll_plans import build_dll_plans
+from .mod_overrides import apply_mod_overrides, list_mod_overrides
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
 from .project_io import TranslatorProject, project_signature
 from .stats import calculate_translation_progress
@@ -22,6 +23,15 @@ from .ui_themes import THEMES
 
 
 class UISessionMixin:
+    def _refresh_mod_override_entries(self) -> None:
+        install_dir = self._backup_host_install_dir()
+        if install_dir is None or not install_dir.exists():
+            self._mod_override_entries = []
+        else:
+            self._mod_override_entries = list_mod_overrides(install_dir)
+        if hasattr(self, "mod_overrides_table"):
+            self._refresh_mod_overrides_table()
+
     def _backup_host_install_dir(self) -> Path | None:
         if self._source_catalog is not None:
             return self._source_catalog.install_dir
@@ -403,9 +413,11 @@ class UISessionMixin:
                     lambda: setattr(
                         self,
                         "_source_catalog",
-                        self._loader.load_catalog(
-                            source_dir,
-                            include_infocards=self.include_infocards_check.isChecked(),
+                        apply_mod_overrides(
+                            self._loader.load_catalog(
+                                source_dir,
+                                include_infocards=self.include_infocards_check.isChecked(),
+                            )
                         ),
                     )
                 ),
@@ -421,6 +433,7 @@ class UISessionMixin:
         self._old_text_lookup = {}
         self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
+        self._refresh_mod_override_entries()
         self._refresh_old_text_backup_options()
         self._refresh_dll_plan_table()
         self._populate_dll_filter(self._source_catalog)
@@ -456,9 +469,11 @@ class UISessionMixin:
             )
             assert target_catalog is not None
             self._target_catalog = target_catalog
-            self._paired_catalog = apply_known_term_suggestions(
-                pair_catalogs(self._source_catalog, target_catalog),
-                target_language=self._target_lang_code,
+            self._paired_catalog = apply_mod_overrides(
+                apply_known_term_suggestions(
+                    pair_catalogs(self._source_catalog, target_catalog),
+                    target_language=self._target_lang_code,
+                )
             )
             self._dll_plans = build_dll_plans(self._source_catalog, self._paired_catalog, target_catalog)
         except Exception as exc:
@@ -467,6 +482,7 @@ class UISessionMixin:
 
         self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
+        self._refresh_mod_override_entries()
         self._refresh_old_text_backup_options()
         self._refresh_dll_plan_table()
         self._populate_dll_filter(self._paired_catalog)
@@ -523,9 +539,11 @@ class UISessionMixin:
         self._visible_units = []
         self._old_text_backup_dir = None
         self._old_text_lookup = {}
+        self._mod_override_entries = []
         self.include_infocards_check.setChecked(True)
         self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)
+        self._refresh_mod_override_entries()
         self._refresh_old_text_backup_options()
         self._populate_dll_filter(None)
         self._refresh_dll_plan_table()

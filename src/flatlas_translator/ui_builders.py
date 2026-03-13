@@ -517,6 +517,7 @@ class UIBuildMixin:
         self.editor_tabs.addTab(self._build_editor_page(), self._tr("tab.editor"))
         self.editor_tabs.addTab(self._build_dll_plan_group(), self._tr("tab.dlls"))
         self.editor_tabs.addTab(self._build_terminology_page(), self._tr("tab.terminology"))
+        self.editor_tabs.addTab(self._build_mod_overrides_page(), self._tr("tab.mod_overrides"))
         layout.addWidget(self.editor_tabs)
         return page
 
@@ -581,6 +582,29 @@ class UIBuildMixin:
         layout = QVBoxLayout(page)
         layout.addWidget(self._build_terminology_mapping_group())
         layout.addWidget(self._build_terminology_management_group(), 1)
+        return page
+
+    def _build_mod_overrides_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        self.mod_overrides_help_label = QLabel(self._tr("mod_overrides.help"))
+        self.mod_overrides_help_label.setWordWrap(True)
+        layout.addWidget(self.mod_overrides_help_label)
+        action_row = QHBoxLayout()
+        self.mod_overrides_reload_button = QPushButton(self._tr("btn.mod_overrides_reload"))
+        self.mod_overrides_reload_button.clicked.connect(self._refresh_mod_override_entries)
+        self.mod_overrides_delete_button = QPushButton(self._tr("btn.mod_overrides_delete"))
+        self.mod_overrides_delete_button.clicked.connect(self._delete_selected_mod_override)
+        action_row.addWidget(self.mod_overrides_reload_button)
+        action_row.addWidget(self.mod_overrides_delete_button)
+        action_row.addStretch(1)
+        layout.addLayout(action_row)
+        self.mod_overrides_table = QTableWidget(0, 6)
+        self.mod_overrides_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.mod_overrides_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.mod_overrides_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.mod_overrides_table.verticalHeader().setVisible(False)
+        layout.addWidget(self.mod_overrides_table, 1)
         return page
 
     def _build_terminology_mapping_group(self) -> QGroupBox:
@@ -744,6 +768,8 @@ class UIBuildMixin:
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_unit_table_context_menu)
         self.table.verticalHeader().setVisible(False)
         self.table.itemSelectionChanged.connect(self._update_preview)
         left_layout.addWidget(self.table, 1)

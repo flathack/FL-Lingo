@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from .localization import LANGUAGE_OPTIONS
 from .catalog import CatalogLoader
 from .dll_plans import DllRelocalizationPlan, DllStrategy
+from .mod_overrides import ModOverrideEntry
 from .models import RelocalizationStatus, ResourceCatalog, TranslationUnit
 from .resource_writer import ApplyReport, ResourceWriter
 from .stats import summarize_catalog
@@ -90,6 +91,7 @@ class TranslatorMainWindow(UIBuildMixin, UIStateMixin, UIEditorMixin, UISessionM
         self._audio_progress_cache_value: tuple[int, int, int] = (0, 0, 0)
         self._old_text_backup_dir: Path | None = None
         self._old_text_lookup: dict[tuple[str, str, int], str] = {}
+        self._mod_override_entries: list[ModOverrideEntry] = []
         self._setup_ui()
         self._apply_editor_default_filters(force=True)
         startup_project = getattr(self._config, "startup_project_path", None)

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QTableWidgetItem, QTextEdit
+from PySide6.QtWidgets import QInputDialog, QMenu, QTableWidgetItem, QTextEdit
 
 from .dll_plans import DllStrategy
+from .mod_overrides import ModOverrideEntry, delete_mod_override, save_mod_override
 from .models import ResourceCatalog, ResourceKind, TranslationUnit
 from .stats import summarize_catalog
 from .terminology import list_pattern_entries, list_terminology_entries, save_replacement_pattern, save_term_mapping
@@ -15,6 +16,34 @@ class UIEditorMixin:
     def _old_text_for_unit(self, unit: TranslationUnit) -> str:
         key = (str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id))
         return self._old_text_lookup.get(key, unit.source_text)
+
+    def _refresh_mod_overrides_table(self) -> None:
+        if not hasattr(self, "mod_overrides_table"):
+            return
+        self.mod_overrides_table.setHorizontalHeaderLabels(
+            [
+                self._tr("table.mod_overrides.kind"),
+                self._tr("table.mod_overrides.dll"),
+                self._tr("table.mod_overrides.local_id"),
+                self._tr("table.mod_overrides.mode"),
+                self._tr("table.mod_overrides.override_text"),
+                self._tr("table.mod_overrides.source_text"),
+            ]
+        )
+        self.mod_overrides_table.setRowCount(len(self._mod_override_entries))
+        for row, entry in enumerate(self._mod_override_entries):
+            mode_label = self._tr("mod_overrides.mode.keep") if entry.mode == "keep_original" else self._tr("mod_overrides.mode.custom")
+            values = [
+                entry.kind,
+                entry.dll_name,
+                str(entry.local_id),
+                mode_label,
+                " ".join(str(entry.override_text or "").split())[:120],
+                " ".join(str(entry.source_text or "").split())[:120],
+            ]
+            for col, value in enumerate(values):
+                self.mod_overrides_table.setItem(row, col, QTableWidgetItem(value))
+        self.mod_overrides_table.resizeColumnsToContents()
 
     def _update_summary(self, catalog: ResourceCatalog, visible_units: list[TranslationUnit]) -> None:
         total = len(catalog.units)
@@ -114,6 +143,114 @@ class UIEditorMixin:
             use_action = menu.addAction(self._tr("menuitem.term_target_from_selection"))
             use_action.triggered.connect(lambda checked=False, text=selected_text: self._use_term_target_text(text))
         menu.exec(self.target_preview.mapToGlobal(position))
+
+    def _show_unit_table_context_menu(self, position) -> None:
+        row = self.table.rowAt(position.y())
+        if row >= 0:
+            self.table.selectRow(row)
+        unit = self._selected_unit()
+        if unit is None:
+            return
+        menu = QMenu(self.table)
+        keep_action = menu.addAction(self._tr("menuitem.mod_override_keep"))
+        keep_action.triggered.connect(lambda checked=False, selected_unit=unit: self._save_mod_override_keep(selected_unit))
+        custom_action = menu.addAction(self._tr("menuitem.mod_override_custom"))
+        custom_action.triggered.connect(lambda checked=False, selected_unit=unit: self._save_mod_override_custom(selected_unit))
+        if self._find_mod_override_entry(unit) is not None:
+            menu.addSeparator()
+            remove_action = menu.addAction(self._tr("menuitem.mod_override_remove"))
+            remove_action.triggered.connect(lambda checked=False, selected_unit=unit: self._remove_mod_override_for_unit(selected_unit))
+        menu.exec(self.table.viewport().mapToGlobal(position))
+
+    def _find_mod_override_entry(self, unit: TranslationUnit) -> ModOverrideEntry | None:
+        key = (str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id))
+        return next((entry for entry in self._mod_override_entries if entry.key() == key), None)
+
+    def _save_mod_override_keep(self, unit: TranslationUnit) -> None:
+        catalog = self._current_catalog()
+        if catalog is None:
+            return
+        path = save_mod_override(
+            catalog.install_dir,
+            ModOverrideEntry(
+                kind=str(unit.kind),
+                dll_name=unit.source.dll_name,
+                local_id=int(unit.source.local_id),
+                mode="keep_original",
+                source_text=unit.source_text,
+            ),
+        )
+        self._reload_current_catalog_after_override()
+        self._set_status(self._tr("status.mod_override_saved").format(path=path))
+
+    def _save_mod_override_custom(self, unit: TranslationUnit) -> None:
+        catalog = self._current_catalog()
+        if catalog is None:
+            return
+        text, accepted = QInputDialog.getMultiLineText(
+            self,
+            self._tr("dialog.mod_override_custom_title"),
+            self._tr("dialog.mod_override_custom_label"),
+            unit.replacement_text or unit.source_text,
+        )
+        if not accepted:
+            return
+        cleaned = str(text or "").strip()
+        if not cleaned:
+            self._show_error(self._tr("error.mod_override_empty"))
+            return
+        path = save_mod_override(
+            catalog.install_dir,
+            ModOverrideEntry(
+                kind=str(unit.kind),
+                dll_name=unit.source.dll_name,
+                local_id=int(unit.source.local_id),
+                mode="custom_text",
+                override_text=cleaned,
+                source_text=unit.source_text,
+            ),
+        )
+        self._reload_current_catalog_after_override()
+        self._set_status(self._tr("status.mod_override_saved").format(path=path))
+
+    def _remove_mod_override_for_unit(self, unit: TranslationUnit) -> None:
+        catalog = self._current_catalog()
+        if catalog is None:
+            return
+        path = delete_mod_override(
+            catalog.install_dir,
+            kind=str(unit.kind),
+            dll_name=unit.source.dll_name,
+            local_id=int(unit.source.local_id),
+        )
+        self._reload_current_catalog_after_override()
+        self._set_status(self._tr("status.mod_override_removed").format(path=path))
+
+    def _delete_selected_mod_override(self) -> None:
+        if not hasattr(self, "mod_overrides_table"):
+            return
+        row = self.mod_overrides_table.currentRow()
+        if row < 0 or row >= len(self._mod_override_entries):
+            return
+        entry = self._mod_override_entries[row]
+        catalog = self._current_catalog()
+        install_dir = catalog.install_dir if catalog is not None else self._backup_host_install_dir()
+        if install_dir is None:
+            return
+        path = delete_mod_override(
+            install_dir,
+            kind=entry.kind,
+            dll_name=entry.dll_name,
+            local_id=entry.local_id,
+        )
+        self._reload_current_catalog_after_override()
+        self._set_status(self._tr("status.mod_override_removed").format(path=path))
+
+    def _reload_current_catalog_after_override(self) -> None:
+        if self._source_catalog is not None:
+            self._load_source_catalog()
+            if self.target_edit.text().strip():
+                self._load_compare_catalog()
 
     def _save_terminology_mapping(self) -> None:
         source_term = self.term_source_edit.text().strip()

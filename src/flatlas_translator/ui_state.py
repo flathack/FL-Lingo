@@ -13,6 +13,10 @@ from .terminology import clear_term_map_cache
 
 
 class UIStateMixin:
+    def _handle_install_path_change(self, _value: str = "") -> None:
+        self._invalidate_audio_progress_cache()
+        self._update_action_state()
+
     def _invalidate_audio_progress_cache(self) -> None:
         self._audio_progress_cache_key = None
         self._audio_progress_cache_value = (0, 0, 0)

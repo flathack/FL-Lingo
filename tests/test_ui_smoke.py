@@ -269,6 +269,36 @@ def test_simple_mode_status_transitions_from_idle_to_loaded(qtbot, monkeypatch, 
     assert window.simple_scan_button.isEnabled()
 
 
+def test_simple_mode_scan_button_refreshes_when_simple_paths_change(qtbot, monkeypatch, tmp_path: Path) -> None:
+    window = _make_window(qtbot, monkeypatch, tmp_path)
+
+    assert not window.simple_scan_button.isEnabled()
+
+    window.simple_source_edit.setText("/tmp/source-game")
+    assert not window.simple_scan_button.isEnabled()
+
+    window.simple_target_edit.setText("/tmp/target-game")
+
+    assert window.source_edit.text() == "/tmp/source-game"
+    assert window.target_edit.text() == "/tmp/target-game"
+    assert window.simple_scan_button.isEnabled()
+
+
+def test_simple_mode_scan_button_refreshes_when_main_paths_change(qtbot, monkeypatch, tmp_path: Path) -> None:
+    window = _make_window(qtbot, monkeypatch, tmp_path)
+
+    assert not window.simple_scan_button.isEnabled()
+
+    window.source_edit.setText("/tmp/source-game")
+    assert not window.simple_scan_button.isEnabled()
+
+    window.target_edit.setText("/tmp/target-game")
+
+    assert window.simple_source_edit.text() == "/tmp/source-game"
+    assert window.simple_target_edit.text() == "/tmp/target-game"
+    assert window.simple_scan_button.isEnabled()
+
+
 def test_refresh_window_title_tolerates_bad_project_info_placeholder(qtbot, monkeypatch, tmp_path: Path) -> None:
     window = _make_window(qtbot, monkeypatch, tmp_path)
     original_tr = window._tr

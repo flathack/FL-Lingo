@@ -1,0 +1,6 @@
+FL Lingo ist ein Desktop-Werkzeug fuer Freelancer-Mod-ReLocalization. Das Programm soll einen modifizierten Spielstand mit einer sauberen Referenzinstallation vergleichen, sichere Uebersetzungen automatisch wiederherstellen, offene Mod-Texte fuer externe oder manuelle Uebersetzung aufbereiten und die fertigen Texte sicher in die Ressourcen-DLLs zurueckschreiben.
+
+bei FL-Lingo wird freelancer von englisch nach deutsch übersetzt, 
+Deutsche .dlls findest du hier: C:\C-Installed-Apps\_FL Fresh Install-deutsch, 
+englische hier: C:\C-Installed-Apps\Freelancer Crossfire, 
+FL Lingo-Projekt hier: E:\GITHUB\FL-Lingo

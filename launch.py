@@ -21,7 +21,7 @@ class LaunchConfig:
     developed_by: str = DEVELOPED_BY
     default_language: str = DEFAULT_LANGUAGE
     default_theme: str = DEFAULT_THEME
-    default_source_language: str = DEFAULT_SOURCE_LANGUAGE
+    # default_source_language: str = DEFAULT_SOURCE_LANGUAGE
     default_target_language: str = DEFAULT_TARGET_LANGUAGE
     startup_project_path: str | None = None
 

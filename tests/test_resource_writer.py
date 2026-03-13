@@ -4,6 +4,7 @@ import tempfile
 
 import pytest
 
+from flatlas_translator.dll_plans import DllRelocalizationPlan, DllStrategy
 from flatlas_translator.models import ResourceCatalog, ResourceKind, ResourceLocation, TranslationUnit, make_global_id
 from flatlas_translator.resource_writer import AudioCopyCandidate, ResourceWriter
 
@@ -247,6 +248,82 @@ def test_load_apply_session_matches_signature() -> None:
         assert session is not None
         assert session.completed_dlls == ("nameresources.dll",)
         assert session.pending_dlls == ()
+
+
+def test_apply_german_relocalization_patches_even_full_replace_safe_dlls(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_dir = Path("C:/mod")
+    source_dll = install_dir / "EXE" / "NameResources.dll"
+    target_dll = Path("C:/reference/EXE/NameResources.dll")
+
+    unit = TranslationUnit(
+        ResourceKind.STRING,
+        ResourceLocation(
+            dll_name="NameResources.dll",
+            dll_path=source_dll,
+            local_id=1,
+            slot=1,
+            global_id=make_global_id(1, 1),
+        ),
+        "You owe %d0 credits to %F0v1.",
+        target=ResourceLocation(
+            dll_name="NameResources.dll",
+            dll_path=target_dll,
+            local_id=1,
+            slot=1,
+            global_id=make_global_id(1, 1),
+        ),
+        target_text="Sie schulden %d0 Credits an %F0v5.",
+    )
+    catalog = ResourceCatalog(
+        install_dir=install_dir,
+        freelancer_ini=install_dir / "EXE" / "freelancer.ini",
+        units=(unit,),
+    )
+    plan = DllRelocalizationPlan(
+        dll_name="NameResources.dll",
+        source_dll_path=source_dll,
+        target_dll_path=target_dll,
+        strategy=DllStrategy.FULL_REPLACE_SAFE,
+        source_strings=1,
+        target_strings=1,
+        source_infocards=0,
+        target_infocards=0,
+        matched_units=1,
+        translated_units=1,
+        auto_relocalize_units=1,
+        mod_only_units=0,
+    )
+
+    writer = ResourceWriter()
+    captured: dict[str, object] = {}
+    copy_calls: list[tuple[Path, Path]] = []
+
+    monkeypatch.setattr(writer, "has_toolchain", lambda: True)
+    monkeypatch.setattr(writer, "_string_reader", type("StubReader", (), {"read_strings": lambda self, _path: {}})())
+    monkeypatch.setattr(writer, "_html_reader", type("StubHtmlReader", (), {"read_html_resources": lambda self, _path: {}})())
+    monkeypatch.setattr(writer, "_make_backup_dir", lambda _install_dir, _backup_root: Path("C:/backup"))
+    monkeypatch.setattr(writer, "load_apply_session", lambda _catalog, units=None: None)
+    monkeypatch.setattr(ResourceWriter, "_save_apply_state_payload", staticmethod(lambda _state_path, _payload: None))
+    monkeypatch.setattr(ResourceWriter, "_clear_apply_state", staticmethod(lambda _state_path: None))
+    monkeypatch.setattr(ResourceWriter, "apply_state_path", staticmethod(lambda _install_dir: Path("C:/backup/apply-session.json")))
+    monkeypatch.setattr(Path, "mkdir", lambda self, parents=False, exist_ok=False: None)
+    monkeypatch.setattr("flatlas_translator.resource_writer.shutil.copy2", lambda src, dst: copy_calls.append((Path(src), Path(dst))))
+
+    def _fake_write(dll_path: Path, strings: dict[int, str], infos: dict[int, str]) -> tuple[bool, str]:
+        captured["dll_path"] = dll_path
+        captured["strings"] = dict(strings)
+        captured["infos"] = dict(infos)
+        return True, ""
+
+    monkeypatch.setattr(writer, "_write_resource_dll_entries", _fake_write)
+
+    report = writer.apply_german_relocalization(catalog, dll_plans=[plan])
+
+    assert report.written_files == (source_dll,)
+    assert captured["dll_path"] == source_dll
+    assert captured["strings"] == {1: "Sie schulden %d0 Credits an %F0v1."}
+    assert captured["infos"] == {}
+    assert (target_dll, source_dll) not in copy_calls
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Linux/macOS-only behavior")

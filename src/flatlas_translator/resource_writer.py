@@ -333,14 +333,12 @@ class ResourceWriter:
         )
 
         written_files: list[Path] = []
-        plan_by_name = {plan.dll_name: plan for plan in list(dll_plans or [])}
         total_dlls = len(batches)
         for index, (dll_path, bucket) in enumerate(batches, start=1):
             dll_name = dll_path.name
             dll_key = dll_name.lower()
             if dll_key in completed_dlls:
                 continue
-            plan = plan_by_name.get(dll_name)
             current_strings = self._string_reader.read_strings(dll_path)
             current_infos = self._html_reader.read_html_resources(dll_path)
             current_strings.update(bucket["strings"])
@@ -352,13 +350,6 @@ class ResourceWriter:
                 shutil.copy2(dll_path, backup_path)
 
             action = "patch"
-            if (
-                plan is not None
-                and plan.strategy == DllStrategy.FULL_REPLACE_SAFE
-                and plan.target_dll_path is not None
-                and plan.target_dll_path.is_file()
-            ):
-                action = "copy"
 
             if progress_callback is not None:
                 progress_callback(
@@ -374,25 +365,21 @@ class ResourceWriter:
                     }
                 )
 
-            if action == "copy":
-                shutil.copy2(plan.target_dll_path, dll_path)
-                written_files.append(dll_path)
-            else:
-                ok, error = self._write_resource_dll_entries(dll_path, current_strings, current_infos)
-                if not ok:
-                    shutil.copy2(backup_path, dll_path)
-                    self._save_apply_state_payload(
-                        state_path,
-                        {
-                            "signature": signature,
-                            "backup_dir": str(backup_dir),
-                            "completed_dlls": sorted(completed_dlls),
-                            "failed_dll": dll_name,
-                            "last_error": error,
-                        },
-                    )
-                    raise RuntimeError(f"Failed to write {dll_path.name}: {error}")
-                written_files.append(dll_path)
+            ok, error = self._write_resource_dll_entries(dll_path, current_strings, current_infos)
+            if not ok:
+                shutil.copy2(backup_path, dll_path)
+                self._save_apply_state_payload(
+                    state_path,
+                    {
+                        "signature": signature,
+                        "backup_dir": str(backup_dir),
+                        "completed_dlls": sorted(completed_dlls),
+                        "failed_dll": dll_name,
+                        "last_error": error,
+                    },
+                )
+                raise RuntimeError(f"Failed to write {dll_path.name}: {error}")
+            written_files.append(dll_path)
 
             completed_dlls.add(dll_key)
             self._save_apply_state_payload(

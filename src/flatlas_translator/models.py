@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+import re
 
 
 class ResourceKind(StrEnum):
@@ -48,7 +49,7 @@ class TranslationUnit:
 
     @property
     def replacement_text(self) -> str:
-        return str(self.manual_text or self.target_text or "")
+        return _preserve_source_placeholders(self.source_text, self.manual_text or self.target_text or "")
 
     @property
     def status(self) -> RelocalizationStatus:
@@ -116,3 +117,28 @@ def _location_to_dict(location: ResourceLocation | None) -> dict[str, object] | 
 
 def _normalized_compare_text(text: str) -> str:
     return str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+
+
+_PLACEHOLDER_PATTERN = re.compile(r"%[A-Za-z0-9]+")
+
+
+def _preserve_source_placeholders(source_text: str, replacement_text: str) -> str:
+    replacement = str(replacement_text or "")
+    if not replacement:
+        return ""
+
+    source_tokens = _PLACEHOLDER_PATTERN.findall(str(source_text or ""))
+    replacement_tokens = _PLACEHOLDER_PATTERN.findall(replacement)
+    if not source_tokens or not replacement_tokens:
+        return replacement
+    if len(source_tokens) != len(replacement_tokens):
+        return replacement
+    if [_placeholder_shape(token) for token in source_tokens] != [_placeholder_shape(token) for token in replacement_tokens]:
+        return replacement
+
+    token_iter = iter(source_tokens)
+    return _PLACEHOLDER_PATTERN.sub(lambda _match: next(token_iter), replacement)
+
+
+def _placeholder_shape(token: str) -> str:
+    return re.sub(r"\d+", "#", str(token or "").lower())

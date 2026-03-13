@@ -43,3 +43,16 @@ def test_translation_unit_normalizes_line_endings_for_status_and_change() -> Non
 
     assert unit.status == RelocalizationStatus.ALREADY_LOCALIZED
     assert unit.is_changed is False
+
+
+def test_replacement_text_preserves_source_placeholders() -> None:
+    location = _location()
+    unit = TranslationUnit(
+        ResourceKind.STRING,
+        location,
+        "You could stand to have a better reputation with %F0v1 for %d0 credits.",
+        location,
+        "Sie koennten einen besseren Ruf bei %F0v5 fuer %d0 Credits brauchen.",
+    )
+
+    assert unit.replacement_text == "Sie koennten einen besseren Ruf bei %F0v1 fuer %d0 Credits brauchen."

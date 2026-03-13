@@ -308,6 +308,7 @@ class UIStateMixin:
                 self._tr("table.units.local_id"),
                 self._tr("table.units.global_id"),
                 self._tr("table.units.status"),
+                self._tr("table.units.override"),
                 self._tr("table.units.changed"),
                 self._tr("table.units.preview"),
                 self._tr("table.units.old_text"),

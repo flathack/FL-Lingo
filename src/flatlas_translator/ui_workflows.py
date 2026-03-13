@@ -530,6 +530,7 @@ class UIWorkflowMixin:
         if not self._writer.has_toolchain():
             self._show_error(self._tr("error.toolchain_missing"))
             return
+        catalog = self._catalog_with_selected_old_text_overrides(catalog)
         units = [
             unit
             for unit in catalog.units

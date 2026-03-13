@@ -247,10 +247,7 @@ class UIEditorMixin:
         self._set_status(self._tr("status.mod_override_removed").format(path=path))
 
     def _reload_current_catalog_after_override(self) -> None:
-        if self._source_catalog is not None:
-            self._load_source_catalog()
-            if self.target_edit.text().strip():
-                self._load_compare_catalog()
+        self._refresh_after_mod_override_change()
 
     def _save_terminology_mapping(self) -> None:
         source_term = self.term_source_edit.text().strip()

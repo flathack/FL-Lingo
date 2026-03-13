@@ -752,7 +752,7 @@ class UIBuildMixin:
         self.summary_label.setWordWrap(True)
         left_layout.addWidget(self.summary_label)
 
-        self.table = QTableWidget(0, 8)
+        self.table = QTableWidget(0, 9)
         self.table.setHorizontalHeaderLabels(
             [
                 self._tr("table.units.kind"),
@@ -760,6 +760,7 @@ class UIBuildMixin:
                 self._tr("table.units.local_id"),
                 self._tr("table.units.global_id"),
                 self._tr("table.units.status"),
+                self._tr("table.units.override"),
                 self._tr("table.units.changed"),
                 self._tr("table.units.preview"),
                 self._tr("table.units.old_text"),

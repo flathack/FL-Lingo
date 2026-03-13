@@ -79,6 +79,59 @@ def test_apply_mod_overrides_sets_manual_text_for_keep_and_custom(tmp_path: Path
     assert updated.units[1].manual_text == "Eigener deutscher Text"
 
 
+def test_apply_mod_overrides_uses_backup_lookup_for_keep_original(tmp_path: Path) -> None:
+    install_dir = tmp_path / "mod"
+    save_mod_override(
+        install_dir,
+        ModOverrideEntry(
+            kind="string",
+            dll_name="resources.dll",
+            local_id=907,
+            mode="keep_original",
+            source_text="Renamed by mod",
+        ),
+    )
+    catalog = ResourceCatalog(
+        install_dir=install_dir,
+        freelancer_ini=install_dir / "EXE" / "freelancer.ini",
+        units=(
+            TranslationUnit(ResourceKind.STRING, _location("resources.dll", 907), "Renamed by mod"),
+        ),
+    )
+
+    updated = apply_mod_overrides(
+        catalog,
+        original_text_lookup={("string", "resources.dll", 907): "This is a gun or missile hard point."},
+    )
+
+    assert updated.units[0].manual_text == "This is a gun or missile hard point."
+
+
+def test_apply_mod_overrides_falls_back_to_saved_source_text(tmp_path: Path) -> None:
+    install_dir = tmp_path / "mod"
+    save_mod_override(
+        install_dir,
+        ModOverrideEntry(
+            kind="string",
+            dll_name="resources.dll",
+            local_id=907,
+            mode="keep_original",
+            source_text="Saved original text",
+        ),
+    )
+    catalog = ResourceCatalog(
+        install_dir=install_dir,
+        freelancer_ini=install_dir / "EXE" / "freelancer.ini",
+        units=(
+            TranslationUnit(ResourceKind.STRING, _location("resources.dll", 907), "Current mod rename"),
+        ),
+    )
+
+    updated = apply_mod_overrides(catalog, original_text_lookup={})
+
+    assert updated.units[0].manual_text == "Saved original text"
+
+
 def test_delete_mod_override_removes_entry(tmp_path: Path) -> None:
     install_dir = tmp_path / "mod"
     save_mod_override(

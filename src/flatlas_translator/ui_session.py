@@ -32,6 +32,64 @@ class UISessionMixin:
         if hasattr(self, "mod_overrides_table"):
             self._refresh_mod_overrides_table()
 
+    def _refresh_after_mod_override_change(self) -> None:
+        selected_unit = self._selected_unit()
+        selected_key = self._unit_key(selected_unit) if selected_unit is not None else None
+        previous_override_keys = {entry.key() for entry in self._mod_override_entries}
+        self._refresh_mod_override_entries()
+        current_override_keys = {entry.key() for entry in self._mod_override_entries}
+        override_reset_keys = previous_override_keys | current_override_keys
+        if self._source_catalog is not None:
+            self._source_catalog = self._catalog_with_mod_overrides_reapplied(
+                self._source_catalog,
+                override_reset_keys=override_reset_keys,
+            )
+        if self._paired_catalog is not None:
+            self._paired_catalog = self._catalog_with_mod_overrides_reapplied(
+                self._paired_catalog,
+                override_reset_keys=override_reset_keys,
+            )
+        if (
+            self._source_catalog is not None
+            and self._paired_catalog is not None
+            and self._target_catalog is not None
+        ):
+            self._dll_plans = build_dll_plans(self._source_catalog, self._paired_catalog, self._target_catalog)
+        self._refresh_dll_plan_table()
+        self._refresh_table()
+        if selected_key is not None:
+            self._select_unit_by_key(selected_key)
+        self._update_action_state()
+
+    def _catalog_with_selected_old_text_overrides(self, catalog: ResourceCatalog) -> ResourceCatalog:
+        return apply_mod_overrides(catalog, original_text_lookup=self._old_text_lookup)
+
+    def _catalog_with_mod_overrides_reapplied(
+        self,
+        catalog: ResourceCatalog,
+        *,
+        override_reset_keys: set[tuple[str, str, int]],
+    ) -> ResourceCatalog:
+        base_units: list[TranslationUnit] = []
+        for unit in catalog.units:
+            unit_key = (str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id))
+            base_units.append(
+                TranslationUnit(
+                    kind=unit.kind,
+                    source=unit.source,
+                    source_text=unit.source_text,
+                    target=unit.target,
+                    target_text=unit.target_text,
+                    manual_text="" if unit_key in override_reset_keys else unit.manual_text,
+                )
+            )
+        base_catalog = ResourceCatalog(
+            install_dir=catalog.install_dir,
+            freelancer_ini=catalog.freelancer_ini,
+            units=tuple(base_units),
+        )
+        return apply_mod_overrides(base_catalog)
+
     def _backup_host_install_dir(self) -> Path | None:
         if self._source_catalog is not None:
             return self._source_catalog.install_dir
@@ -627,12 +685,14 @@ class UISessionMixin:
         self._visible_units = units
         self.table.setRowCount(len(units))
         for row, unit in enumerate(units):
+            has_override = self._find_mod_override_entry(unit) is not None
             values = [
                 str(unit.kind),
                 unit.source.dll_name,
                 str(unit.source.local_id),
                 str(unit.source.global_id),
                 self._status_text(unit.status),
+                "YES" if has_override else "NO",
                 self._tr("yes") if unit.is_changed else self._tr("no"),
                 " ".join(unit.source_text.split())[:120],
                 " ".join(self._old_text_for_unit(unit).split())[:120],

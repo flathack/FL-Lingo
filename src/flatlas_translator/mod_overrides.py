@@ -89,18 +89,27 @@ def delete_mod_override(install_dir: Path, *, kind: str, dll_name: str, local_id
     return path
 
 
-def apply_mod_overrides(catalog: ResourceCatalog) -> ResourceCatalog:
+def apply_mod_overrides(
+    catalog: ResourceCatalog,
+    *,
+    original_text_lookup: dict[tuple[str, str, int], str] | None = None,
+) -> ResourceCatalog:
     entries = list_mod_overrides(catalog.install_dir)
     if not entries:
         return catalog
     by_key = {entry.key(): entry for entry in entries}
     updated_units: list[TranslationUnit] = []
     for unit in catalog.units:
-        entry = by_key.get((str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id)))
+        unit_key = (str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id))
+        entry = by_key.get(unit_key)
         if entry is None:
             updated_units.append(unit)
             continue
-        manual_text = unit.source_text if entry.mode == "keep_original" else str(entry.override_text or "").strip()
+        manual_text = _resolve_override_text(
+            unit,
+            entry,
+            original_text_lookup=original_text_lookup,
+        )
         updated_units.append(
             TranslationUnit(
                 kind=unit.kind,
@@ -116,6 +125,27 @@ def apply_mod_overrides(catalog: ResourceCatalog) -> ResourceCatalog:
         freelancer_ini=catalog.freelancer_ini,
         units=tuple(updated_units),
     )
+
+
+def _resolve_override_text(
+    unit: TranslationUnit,
+    entry: ModOverrideEntry,
+    *,
+    original_text_lookup: dict[tuple[str, str, int], str] | None = None,
+) -> str:
+    if entry.mode != "keep_original":
+        return str(entry.override_text or "").strip()
+
+    unit_key = (str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id))
+    if original_text_lookup is not None:
+        lookup_text = str(original_text_lookup.get(unit_key, "") or "").strip()
+        if lookup_text:
+            return lookup_text
+
+    saved_source_text = str(entry.source_text or "").strip()
+    if saved_source_text:
+        return saved_source_text
+    return unit.source_text
 
 
 def _write_mod_overrides(path: Path, entries: list[ModOverrideEntry]) -> None:

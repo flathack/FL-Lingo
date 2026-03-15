@@ -20,6 +20,13 @@ from pathlib import Path
 from .dll_resources import DllHtmlResourceReader, DllStringTableReader
 from .dll_plans import DllRelocalizationPlan, DllStrategy
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind
+from .utf_audio import (
+    UtfAudioMergeCandidate,
+    UtfAudioMergeReport,
+    UtfMergeResult,
+    merge_utf_file,
+    scan_utf_merge_candidate,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +79,7 @@ class AudioCopyProgress:
 
 class ResourceWriter:
     AUDIO_DIALOGUE_ROOT = Path("DATA") / "AUDIO" / "DIALOGUE"
+    AUDIO_ROOT = Path("DATA") / "AUDIO"
 
     def __init__(
         self,
@@ -923,3 +931,83 @@ class ResourceWriter:
             seen.add(key)
             result.append(directory)
         return result
+
+    # ------------------------------------------------------------------
+    # UTF audio merge (3-way: mod-EN × vanilla-EN × vanilla-DE)
+    # ------------------------------------------------------------------
+
+    def _utf_audio_files(self, install_dir: Path) -> list[Path]:
+        """Return all .utf files directly under DATA/AUDIO."""
+        audio_root = Path(install_dir) / self.AUDIO_ROOT
+        if not audio_root.is_dir():
+            return []
+        return sorted(p for p in audio_root.iterdir() if p.is_file() and p.suffix.lower() == ".utf")
+
+    def list_utf_audio_merge_candidates(
+        self,
+        install_dir: Path,
+        reference_en_dir: Path,
+        reference_de_dir: Path,
+    ) -> tuple[UtfAudioMergeCandidate, ...]:
+        """Scan all UTF files and return candidates where German audio can be injected."""
+        install_dir = Path(install_dir)
+        reference_en_dir = Path(reference_en_dir)
+        reference_de_dir = Path(reference_de_dir)
+
+        candidates: list[UtfAudioMergeCandidate] = []
+        for mod_path in self._utf_audio_files(install_dir):
+            ref_en_path = reference_en_dir / self.AUDIO_ROOT / mod_path.name
+            ref_de_path = reference_de_dir / self.AUDIO_ROOT / mod_path.name
+            cand = scan_utf_merge_candidate(mod_path, ref_en_path, ref_de_path)
+            if cand is not None:
+                candidates.append(cand)
+        return tuple(candidates)
+
+    def merge_utf_audio(
+        self,
+        install_dir: Path,
+        reference_en_dir: Path,
+        reference_de_dir: Path,
+        *,
+        candidates: tuple[UtfAudioMergeCandidate, ...] | None = None,
+        backup_dir: Path | None = None,
+    ) -> UtfAudioMergeReport:
+        """Perform 3-way merge on UTF audio files, writing results in-place."""
+        install_dir = Path(install_dir)
+        chosen = tuple(candidates or self.list_utf_audio_merge_candidates(
+            install_dir, reference_en_dir, reference_de_dir,
+        ))
+        if not chosen:
+            raise RuntimeError("No UTF audio merge candidates found.")
+
+        resolved_backup_dir = Path(backup_dir) if backup_dir is not None else self._make_backup_dir(install_dir, None)
+
+        results: list[UtfMergeResult] = []
+        total_replaced = 0
+        total_kept = 0
+
+        for cand in chosen:
+            target_path = install_dir / self.AUDIO_ROOT / cand.mod_path.name
+            # Backup original
+            if target_path.exists():
+                bak = resolved_backup_dir / self.AUDIO_ROOT / target_path.name
+                bak.parent.mkdir(parents=True, exist_ok=True)
+                if not bak.exists():
+                    shutil.copy2(target_path, bak)
+
+            result = merge_utf_file(
+                mod_path=cand.mod_path,
+                ref_en_path=cand.ref_en_path,
+                ref_de_path=cand.ref_de_path,
+                output_path=target_path,
+            )
+            results.append(result)
+            total_replaced += result.replaced_count
+            total_kept += result.kept_count
+
+        return UtfAudioMergeReport(
+            merged_files=tuple(results),
+            backup_dir=resolved_backup_dir,
+            total_replaced=total_replaced,
+            total_kept=total_kept,
+        )

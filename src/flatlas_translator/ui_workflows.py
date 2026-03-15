@@ -468,6 +468,72 @@ class UIWorkflowMixin:
         self._set_status(self._tr("status.audio_copied").format(count=len(report.copied_files)))
         return len(report.copied_files)
 
+    def _merge_utf_audio_files(self) -> None:
+        resolved = self._resolve_source_and_reference_installs()
+        if resolved is None:
+            return
+        source_install, reference_install = resolved
+
+        # Ask for English vanilla reference
+        en_ref_path = QFileDialog.getExistingDirectory(
+            self,
+            self._tr("dialog.merge_utf_audio_en_ref"),
+            str(source_install.parent),
+        )
+        if not en_ref_path:
+            return
+        reference_en = Path(en_ref_path)
+
+        candidates = self._writer.list_utf_audio_merge_candidates(
+            source_install, reference_en, reference_install,
+        )
+        if not candidates:
+            self._show_error(self._tr("error.no_utf_merge_candidates"))
+            return
+
+        total_replaceable = sum(c.replaceable_count for c in candidates)
+        reply = QMessageBox.question(
+            self,
+            self._tr("dialog.merge_utf_audio_title"),
+            self._tr("dialog.merge_utf_audio_offer").format(
+                count=len(candidates),
+                replaceable=total_replaceable,
+                backup=self._writer.backup_root(source_install),
+            ),
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            report = self._run_with_progress(
+                self._tr("dialog.merge_utf_audio_title"),
+                self._tr("progress.merge_utf_audio"),
+                lambda: self._writer.merge_utf_audio(
+                    source_install, reference_en, reference_install,
+                    candidates=candidates,
+                ),
+            )
+        except Exception as exc:
+            self._show_error(self._tr("error.utf_merge_failed").format(error=exc))
+            return
+
+        QMessageBox.information(
+            self,
+            self._tr("dialog.merge_utf_audio_title"),
+            self._tr("dialog.merge_utf_audio_success").format(
+                files=len(report.merged_files),
+                replaced=report.total_replaced,
+                kept=report.total_kept,
+                backup=report.backup_dir,
+            ),
+        )
+        self._set_status(self._tr("status.utf_merge_done").format(
+            replaced=report.total_replaced,
+            files=len(report.merged_files),
+        ))
+
     def _assemble_patch_bundle(self) -> None:
         resolved = self._resolve_source_and_reference_installs()
         if resolved is None:

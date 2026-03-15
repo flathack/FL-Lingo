@@ -376,6 +376,69 @@ class UISessionMixin:
                             audio_candidates,
                             backup_dir=report.backup_dir,
                         )
+
+            # Auto-merge UTF voice lines when EN vanilla path is available
+            en_ref_path = ""
+            if hasattr(self, "simple_en_ref_edit"):
+                en_ref_path = self.simple_en_ref_edit.text().strip()
+            if not en_ref_path and hasattr(self, "en_ref_edit"):
+                en_ref_path = self.en_ref_edit.text().strip()
+            if en_ref_path:
+                reference_en = Path(en_ref_path)
+                if reference_en.exists():
+                    try:
+                        utf_candidates = self._writer.list_utf_audio_merge_candidates(
+                            source_install, reference_en, reference_install,
+                        )
+                        if utf_candidates:
+                            auto_merge = (
+                                hasattr(self, "simple_audio_copy_check")
+                                and self._ui_mode == "simple"
+                                and self.simple_audio_copy_check.isChecked()
+                            )
+                            if auto_merge:
+                                utf_report = self._run_with_progress(
+                                    self._tr("dialog.merge_utf_audio_title"),
+                                    self._tr("progress.merge_utf_audio"),
+                                    lambda: self._writer.merge_utf_audio(
+                                        source_install, reference_en, reference_install,
+                                        candidates=utf_candidates,
+                                        backup_dir=report.backup_dir,
+                                    ),
+                                )
+                                self._set_status(self._tr("status.utf_merge_done").format(
+                                    replaced=utf_report.total_replaced,
+                                    files=len(utf_report.merged_files),
+                                ))
+                            else:
+                                total_replaceable = sum(c.replaceable_count for c in utf_candidates)
+                                reply = QMessageBox.question(
+                                    self,
+                                    self._tr("dialog.merge_utf_audio_title"),
+                                    self._tr("dialog.merge_utf_audio_offer").format(
+                                        count=len(utf_candidates),
+                                        replaceable=total_replaceable,
+                                        backup=report.backup_dir,
+                                    ),
+                                    QMessageBox.Yes | QMessageBox.No,
+                                    QMessageBox.Yes,
+                                )
+                                if reply == QMessageBox.Yes:
+                                    utf_report = self._run_with_progress(
+                                        self._tr("dialog.merge_utf_audio_title"),
+                                        self._tr("progress.merge_utf_audio"),
+                                        lambda: self._writer.merge_utf_audio(
+                                            source_install, reference_en, reference_install,
+                                            candidates=utf_candidates,
+                                            backup_dir=report.backup_dir,
+                                        ),
+                                    )
+                                    self._set_status(self._tr("status.utf_merge_done").format(
+                                        replaced=utf_report.total_replaced,
+                                        files=len(utf_report.merged_files),
+                                    ))
+                    except Exception:
+                        pass
         self._load_source_catalog()
         self._load_compare_catalog()
 

@@ -23,8 +23,10 @@ from .models import RelocalizationStatus, ResourceCatalog, ResourceKind
 from .utf_audio import (
     UtfAudioMergeCandidate,
     UtfAudioMergeReport,
+    UtfAudioProgress,
     UtfMergeResult,
     merge_utf_file,
+    scan_utf_audio_progress,
     scan_utf_merge_candidate,
 )
 
@@ -175,6 +177,41 @@ class ResourceWriter:
             total_files=total_files,
             matching_files=max(0, total_files - differing_files),
             differing_files=differing_files,
+        )
+
+    def utf_audio_progress(
+        self,
+        install_dir: Path,
+        reference_en_dir: Path,
+        reference_de_dir: Path,
+    ) -> UtfAudioProgress:
+        """Compute how many UTF voice entries are already DE, replaceable, or modded."""
+        install_dir = Path(install_dir)
+        reference_en_dir = Path(reference_en_dir)
+        reference_de_dir = Path(reference_de_dir)
+
+        total_files = 0
+        total_entries = 0
+        already_de = 0
+        replaceable = 0
+        already_mod = 0
+        for mod_path in self._utf_audio_files(install_dir):
+            ref_en_path = reference_en_dir / self.AUDIO_ROOT / mod_path.name
+            ref_de_path = reference_de_dir / self.AUDIO_ROOT / mod_path.name
+            result = scan_utf_audio_progress(mod_path, ref_en_path, ref_de_path)
+            if result is not None:
+                total_files += 1
+                entries, de, repl, mod = result
+                total_entries += entries
+                already_de += de
+                replaceable += repl
+                already_mod += mod
+        return UtfAudioProgress(
+            total_files=total_files,
+            total_entries=total_entries,
+            already_de=already_de,
+            replaceable=replaceable,
+            already_mod=already_mod,
         )
 
     def copy_reference_audio(

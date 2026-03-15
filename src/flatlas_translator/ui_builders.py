@@ -193,10 +193,14 @@ class UIBuildMixin:
 
         self.source_edit = QLineEdit()
         self.target_edit = QLineEdit()
+        self.en_ref_edit = QLineEdit()
         self.source_edit.setPlaceholderText(self._default_install_path_hint("source"))
         self.target_edit.setPlaceholderText(self._default_install_path_hint("target"))
+        self.en_ref_edit.setPlaceholderText(self._tr("simple.en_vanilla_hint"))
+        self.en_ref_edit.setClearButtonEnabled(True)
         self.source_edit.textChanged.connect(lambda value: self._mirror_line_edit_text("simple_source_edit", value))
         self.target_edit.textChanged.connect(lambda value: self._mirror_line_edit_text("simple_target_edit", value))
+        self.en_ref_edit.textChanged.connect(lambda value: self._mirror_line_edit_text("simple_en_ref_edit", value))
         self.source_edit.textChanged.connect(self._handle_install_path_change)
         self.target_edit.textChanged.connect(self._handle_install_path_change)
         self.source_lang_label = QLabel(self._tr("label.source_language"))
@@ -216,6 +220,8 @@ class UIBuildMixin:
         self.browse_source_button.clicked.connect(lambda: self._pick_directory(self.source_edit))
         self.browse_target_button = QPushButton(self._tr("btn.browse"))
         self.browse_target_button.clicked.connect(lambda: self._pick_directory(self.target_edit))
+        self.browse_en_ref_button = QPushButton(self._tr("btn.browse"))
+        self.browse_en_ref_button.clicked.connect(lambda: self._pick_directory(self.en_ref_edit))
 
         self.include_infocards_check = QCheckBox(self._tr("check.infocards"))
         self.include_infocards_check.setChecked(True)
@@ -246,23 +252,33 @@ class UIBuildMixin:
 
         self.source_install_label = QLabel(self._tr("label.source_install"))
         self.target_install_label = QLabel(self._tr("label.target_install"))
+        self.en_ref_install_label = QLabel(self._tr("label.en_vanilla_install"))
 
+        # Column 1: paths (label, edit, browse) — rows 0-2
         grid.addWidget(self.source_install_label, 0, 0)
         grid.addWidget(self.source_edit, 0, 1)
         grid.addWidget(self.browse_source_button, 0, 2)
-        grid.addWidget(self.load_source_button, 0, 3)
-        grid.addWidget(self.source_lang_label, 0, 4)
-        grid.addWidget(self.source_lang_edit, 0, 5)
 
         grid.addWidget(self.target_install_label, 1, 0)
         grid.addWidget(self.target_edit, 1, 1)
         grid.addWidget(self.browse_target_button, 1, 2)
+
+        grid.addWidget(self.en_ref_install_label, 2, 0)
+        grid.addWidget(self.en_ref_edit, 2, 1)
+        grid.addWidget(self.browse_en_ref_button, 2, 2)
+
+        # Column 2: language combos + load/compare buttons — rows 0-1
+        grid.addWidget(self.load_source_button, 0, 3)
+        grid.addWidget(self.source_lang_label, 0, 4)
+        grid.addWidget(self.source_lang_edit, 0, 5)
+
         grid.addWidget(self.compare_button, 1, 3)
         grid.addWidget(self.target_lang_label, 1, 4)
         grid.addWidget(self.target_lang_edit, 1, 5)
         self.source_lang_edit.setToolTip(self._tr("tooltip.source_language"))
         self.target_lang_edit.setToolTip(self._tr("tooltip.target_language"))
 
+        # Column 3: action buttons — row 3
         actions = QHBoxLayout()
         actions.addWidget(self.include_infocards_check)
         actions.addStretch(1)
@@ -274,7 +290,7 @@ class UIBuildMixin:
         actions.addWidget(self.export_long_open_button)
         actions.addWidget(self.export_mod_only_button)
         actions.addWidget(self.export_button)
-        grid.addLayout(actions, 3, 0, 1, 6)
+        grid.addLayout(actions, 4, 0, 1, 6)
         return self.paths_group
 
     def _build_dll_plan_group(self) -> QGroupBox:
@@ -364,6 +380,14 @@ class UIBuildMixin:
         self.simple_target_browse_button = QPushButton(self._tr("btn.browse"))
         self.simple_target_browse_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.simple_target_browse_button.clicked.connect(lambda: self._pick_directory(self.simple_target_edit))
+        self.simple_en_ref_label = QLabel(self._tr("simple.label.en_vanilla_install"))
+        self.simple_en_ref_edit = QLineEdit()
+        self.simple_en_ref_edit.setPlaceholderText(self._tr("simple.en_vanilla_hint"))
+        self.simple_en_ref_edit.setClearButtonEnabled(True)
+        self.simple_en_ref_edit.textChanged.connect(lambda value: self._mirror_line_edit_text("en_ref_edit", value))
+        self.simple_en_ref_browse_button = QPushButton(self._tr("btn.browse"))
+        self.simple_en_ref_browse_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.simple_en_ref_browse_button.clicked.connect(lambda: self._pick_directory(self.simple_en_ref_edit))
         source_row = QHBoxLayout()
         source_row.setSpacing(8)
         source_row.addWidget(self.simple_source_edit, 1)
@@ -372,6 +396,10 @@ class UIBuildMixin:
         target_row.setSpacing(8)
         target_row.addWidget(self.simple_target_edit, 1)
         target_row.addWidget(self.simple_target_browse_button)
+        en_ref_row = QHBoxLayout()
+        en_ref_row.setSpacing(8)
+        en_ref_row.addWidget(self.simple_en_ref_edit, 1)
+        en_ref_row.addWidget(self.simple_en_ref_browse_button)
         paths_layout.addWidget(self.simple_paths_help_label)
         paths_layout.addSpacing(4)
         paths_layout.addWidget(self.simple_source_label)
@@ -379,6 +407,9 @@ class UIBuildMixin:
         paths_layout.addSpacing(8)
         paths_layout.addWidget(self.simple_target_label)
         paths_layout.addLayout(target_row)
+        paths_layout.addSpacing(8)
+        paths_layout.addWidget(self.simple_en_ref_label)
+        paths_layout.addLayout(en_ref_row)
         paths_layout.addStretch(1)
 
         self.simple_scan_group = QGroupBox(self._tr("simple.group.scan"))
@@ -409,6 +440,13 @@ class UIBuildMixin:
         self.simple_audio_progress_bar.setMinimum(0)
         self.simple_audio_progress_bar.setMaximum(100)
         self.simple_audio_progress_bar.setValue(0)
+        self.simple_utf_progress_label = QLabel(self._tr("progress.utf.none"))
+        self.simple_utf_progress_label.setWordWrap(True)
+        self.simple_utf_progress_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.simple_utf_progress_bar = QProgressBar()
+        self.simple_utf_progress_bar.setMinimum(0)
+        self.simple_utf_progress_bar.setMaximum(100)
+        self.simple_utf_progress_bar.setValue(0)
         scan_layout.addWidget(self.simple_scan_help_label)
         scan_layout.addSpacing(4)
         scan_layout.addWidget(self.simple_scan_button)
@@ -416,6 +454,8 @@ class UIBuildMixin:
         scan_layout.addWidget(self.simple_progress_legend_label)
         scan_layout.addWidget(self.simple_audio_progress_label)
         scan_layout.addWidget(self.simple_audio_progress_bar)
+        scan_layout.addWidget(self.simple_utf_progress_label)
+        scan_layout.addWidget(self.simple_utf_progress_bar)
         scan_layout.addWidget(self.simple_scan_summary_label)
         scan_layout.addStretch(1)
 
@@ -701,11 +741,19 @@ class UIBuildMixin:
         self.audio_progress_bar.setMinimum(0)
         self.audio_progress_bar.setMaximum(100)
         self.audio_progress_bar.setValue(0)
+        self.utf_progress_label = QLabel(self._tr("progress.utf.none"))
+        self.utf_progress_label.setWordWrap(True)
+        self.utf_progress_bar = QProgressBar()
+        self.utf_progress_bar.setMinimum(0)
+        self.utf_progress_bar.setMaximum(100)
+        self.utf_progress_bar.setValue(0)
         layout.addWidget(self.translation_progress_bar)
         layout.addWidget(self.translation_progress_label)
         layout.addWidget(self.translation_progress_legend_label)
         layout.addWidget(self.audio_progress_label)
         layout.addWidget(self.audio_progress_bar)
+        layout.addWidget(self.utf_progress_label)
+        layout.addWidget(self.utf_progress_bar)
         self._refresh_progress()
         return self.progress_group
 

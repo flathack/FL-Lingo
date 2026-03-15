@@ -89,6 +89,17 @@ class UtfAudioMergeReport:
     total_kept: int
 
 
+@dataclass(frozen=True, slots=True)
+class UtfAudioProgress:
+    """Progress of UTF voice line germanisation across all files."""
+
+    total_files: int
+    total_entries: int
+    already_de: int       # entries where mod data == DE data
+    replaceable: int      # entries where mod data == EN vanilla → can be set to DE
+    already_mod: int      # entries where mod differs from both EN and DE
+
+
 # ---------------------------------------------------------------------------
 # UTF parser
 # ---------------------------------------------------------------------------
@@ -321,6 +332,55 @@ def scan_utf_merge_candidate(
         total_entries=len(mod_map),
         replaceable_count=replaceable,
     )
+
+
+def scan_utf_audio_progress(
+    mod_path: Path,
+    ref_en_path: Path,
+    ref_de_path: Path,
+) -> tuple[int, int, int, int] | None:
+    """Return (total_entries, already_de, replaceable, already_mod) for one UTF file triple.
+
+    Returns None if any file is missing or unparsable.
+    """
+    mod_path = Path(mod_path)
+    ref_en_path = Path(ref_en_path)
+    ref_de_path = Path(ref_de_path)
+
+    if not (mod_path.is_file() and ref_en_path.is_file() and ref_de_path.is_file()):
+        return None
+
+    try:
+        mod_utf = read_utf(mod_path)
+        ref_en_utf = read_utf(ref_en_path)
+        ref_de_utf = read_utf(ref_de_path)
+    except (ValueError, struct.error):
+        return None
+
+    mod_map = _entries_by_name(mod_utf)
+    en_map = _entries_by_name(ref_en_utf)
+    de_map = _entries_by_name(ref_de_utf)
+
+    already_de = 0
+    replaceable = 0
+    already_mod = 0
+    for name, mod_entry in mod_map.items():
+        en_entry = en_map.get(name)
+        de_entry = de_map.get(name)
+        if en_entry is None or de_entry is None:
+            already_mod += 1
+            continue
+        mod_hash = _entry_hash(mod_entry.data)
+        de_hash = _entry_hash(de_entry.data)
+        en_hash = _entry_hash(en_entry.data)
+        if mod_hash == de_hash:
+            already_de += 1
+        elif mod_hash == en_hash:
+            replaceable += 1
+        else:
+            already_mod += 1
+
+    return (len(mod_map), already_de, replaceable, already_mod)
 
 
 def merge_utf_file(

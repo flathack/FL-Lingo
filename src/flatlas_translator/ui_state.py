@@ -20,6 +20,8 @@ class UIStateMixin:
     def _invalidate_audio_progress_cache(self) -> None:
         self._audio_progress_cache_key = None
         self._audio_progress_cache_value = (0, 0, 0)
+        self._utf_progress_cache_key = None
+        self._utf_progress_cache_value = (0, 0, 0, 0, 0)
 
     def _audio_progress(self) -> tuple[int, int, int]:
         source_path = self.source_edit.text().strip()
@@ -39,6 +41,33 @@ class UIStateMixin:
                 result = (progress.total_files, progress.matching_files, progress.differing_files)
         self._audio_progress_cache_key = cache_key
         self._audio_progress_cache_value = result
+        return result
+
+    def _utf_audio_progress(self) -> tuple[int, int, int, int, int]:
+        """Return (total_files, total_entries, already_de, replaceable, already_mod)."""
+        source_path = self.source_edit.text().strip()
+        target_path = self.target_edit.text().strip()
+        en_ref_path = ""
+        if hasattr(self, "en_ref_edit"):
+            en_ref_path = self.en_ref_edit.text().strip()
+        if not en_ref_path and hasattr(self, "simple_en_ref_edit"):
+            en_ref_path = self.simple_en_ref_edit.text().strip()
+        cache_key = (source_path, target_path, en_ref_path)
+        if self._utf_progress_cache_key == cache_key:
+            return self._utf_progress_cache_value
+        if not source_path or not target_path or not en_ref_path:
+            result = (0, 0, 0, 0, 0)
+        else:
+            source_install = Path(source_path)
+            target_install = Path(target_path)
+            en_ref_install = Path(en_ref_path)
+            if not source_install.exists() or not target_install.exists() or not en_ref_install.exists():
+                result = (0, 0, 0, 0, 0)
+            else:
+                progress = self._writer.utf_audio_progress(source_install, en_ref_install, target_install)
+                result = (progress.total_files, progress.total_entries, progress.already_de, progress.replaceable, progress.already_mod)
+        self._utf_progress_cache_key = cache_key
+        self._utf_progress_cache_value = result
         return result
 
     def _apply_ui_mode(self, *, save: bool = True) -> None:
@@ -70,6 +99,9 @@ class UIStateMixin:
         target_path = self.target_edit.text().strip()
         self._mirror_line_edit_text("simple_source_edit", source_path)
         self._mirror_line_edit_text("simple_target_edit", target_path)
+        if hasattr(self, "en_ref_edit") and hasattr(self, "simple_en_ref_edit"):
+            en_ref_path = self.en_ref_edit.text().strip()
+            self._mirror_line_edit_text("simple_en_ref_edit", en_ref_path)
         localized, done, skipped, total, _percent, _covered_percent = self._translation_progress()
         self.simple_progress_chart.set_progress(total=total, localized=localized, done=done, skipped=skipped)
         audio_total, audio_ready, audio_open = self._audio_progress()
@@ -86,6 +118,25 @@ class UIStateMixin:
                         ready=audio_ready,
                         total=audio_total,
                         open=audio_open,
+                    )
+                )
+
+        utf_files, utf_total, utf_de, utf_repl, utf_mod = self._utf_audio_progress()
+        if hasattr(self, "simple_utf_progress_bar"):
+            self.simple_utf_progress_bar.setMaximum(max(1, utf_total))
+            self.simple_utf_progress_bar.setValue(utf_de if utf_total else 0)
+        if hasattr(self, "simple_utf_progress_label"):
+            if utf_total == 0:
+                self.simple_utf_progress_label.setText(self._tr("progress.utf.none"))
+            else:
+                self.simple_utf_progress_label.setText(
+                    self._tr("progress.utf.text").format(
+                        percent=round((utf_de / utf_total) * 100),
+                        de=utf_de,
+                        total=utf_total,
+                        replaceable=utf_repl,
+                        mod=utf_mod,
+                        files=utf_files,
                     )
                 )
 
@@ -291,6 +342,25 @@ class UIStateMixin:
                     open=audio_open,
                 )
             )
+
+        utf_files, utf_total, utf_de, utf_repl, utf_mod = self._utf_audio_progress()
+        if hasattr(self, "utf_progress_bar"):
+            self.utf_progress_bar.setMaximum(max(1, utf_total))
+            self.utf_progress_bar.setValue(utf_de if utf_total else 0)
+        if hasattr(self, "utf_progress_label"):
+            if utf_total == 0:
+                self.utf_progress_label.setText(self._tr("progress.utf.none"))
+            else:
+                self.utf_progress_label.setText(
+                    self._tr("progress.utf.text").format(
+                        percent=round((utf_de / utf_total) * 100),
+                        de=utf_de,
+                        total=utf_total,
+                        replaceable=utf_repl,
+                        mod=utf_mod,
+                        files=utf_files,
+                    )
+                )
 
     def _refresh_toolchain_label(self) -> None:
         toolchain_state = self._tr("toolchain.available") if self._writer.has_toolchain() else self._tr("toolchain.unavailable")

@@ -474,12 +474,18 @@ class UIWorkflowMixin:
             return
         source_install, reference_install = resolved
 
-        # Ask for English vanilla reference
-        en_ref_path = QFileDialog.getExistingDirectory(
-            self,
-            self._tr("dialog.merge_utf_audio_en_ref"),
-            str(source_install.parent),
-        )
+        # Use en_ref_edit if available; otherwise ask via dialog
+        en_ref_path = ""
+        if hasattr(self, "en_ref_edit"):
+            en_ref_path = self.en_ref_edit.text().strip()
+        if not en_ref_path and hasattr(self, "simple_en_ref_edit"):
+            en_ref_path = self.simple_en_ref_edit.text().strip()
+        if not en_ref_path:
+            en_ref_path = QFileDialog.getExistingDirectory(
+                self,
+                self._tr("dialog.merge_utf_audio_en_ref"),
+                str(source_install.parent),
+            )
         if not en_ref_path:
             return
         reference_en = Path(en_ref_path)

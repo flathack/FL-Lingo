@@ -17,8 +17,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QStackedWidget,
@@ -187,10 +189,45 @@ class UIBuildMixin:
         act_about.triggered.connect(self._show_about_dialog)
         help_menu.addAction(act_about)
 
-    def _build_paths_group(self) -> QGroupBox:
-        self.paths_group = QGroupBox(self._tr("group.installs"))
-        grid = QGridLayout(self.paths_group)
+    def _make_help_button(self, help_key: str) -> QPushButton:
+        """Create a small (?) button that shows help text on hover and click."""
+        btn = QPushButton("(?)")
+        btn.setFixedSize(28, 28)
+        btn.setStyleSheet(
+            "QPushButton { font-size: 11px; font-weight: bold; border: 1px solid #8b95a7; "
+            "border-radius: 14px; color: #8b95a7; background: transparent; padding: 0; }"
+            "QPushButton:hover { background: #364152; color: #e2e8f0; }"
+        )
+        help_text = self._tr(help_key)
+        btn.setToolTip(help_text)
+        btn.clicked.connect(lambda: QMessageBox.information(self, self._tr("help.title"), help_text))
+        return btn
 
+    def _build_preparation_section(self) -> QGroupBox:
+        self.preparation_group = QGroupBox(self._tr("expert.section.preparation"))
+        layout = QVBoxLayout(self.preparation_group)
+
+        help_row = QHBoxLayout()
+        help_row.addWidget(self._make_help_button("expert.help.preparation"))
+        prep_help_label = QLabel(self._tr("expert.help.preparation"))
+        prep_help_label.setWordWrap(True)
+        prep_help_label.setStyleSheet("color: #8b95a7;")
+        help_row.addWidget(prep_help_label, 1)
+        layout.addLayout(help_row)
+
+        toolchain_row = QHBoxLayout()
+        self.toolchain_button = QPushButton(self._tr("btn.install_toolchain"))
+        self.toolchain_button.clicked.connect(self._install_toolchain)
+        self.toolchain_button.setEnabled(self._writer.is_windows())
+        self.toolchain_button.setToolTip(self._tr("tooltip.toolchain"))
+        self.toolchain_label = QLabel("")
+        self.toolchain_label.setWordWrap(True)
+        toolchain_row.addWidget(self._make_help_button("tooltip.toolchain"))
+        toolchain_row.addWidget(self.toolchain_button)
+        toolchain_row.addWidget(self.toolchain_label, 1)
+        layout.addLayout(toolchain_row)
+
+        grid = QGridLayout()
         self.source_edit = QLineEdit()
         self.target_edit = QLineEdit()
         self.en_ref_edit = QLineEdit()
@@ -203,6 +240,17 @@ class UIBuildMixin:
         self.en_ref_edit.textChanged.connect(lambda value: self._mirror_line_edit_text("simple_en_ref_edit", value))
         self.source_edit.textChanged.connect(self._handle_install_path_change)
         self.target_edit.textChanged.connect(self._handle_install_path_change)
+
+        self.browse_source_button = QPushButton(self._tr("btn.browse"))
+        self.browse_source_button.clicked.connect(lambda: self._pick_directory(self.source_edit))
+        self.browse_source_button.setToolTip(self._tr("tooltip.browse"))
+        self.browse_target_button = QPushButton(self._tr("btn.browse"))
+        self.browse_target_button.clicked.connect(lambda: self._pick_directory(self.target_edit))
+        self.browse_target_button.setToolTip(self._tr("tooltip.browse"))
+        self.browse_en_ref_button = QPushButton(self._tr("btn.browse"))
+        self.browse_en_ref_button.clicked.connect(lambda: self._pick_directory(self.en_ref_edit))
+        self.browse_en_ref_button.setToolTip(self._tr("tooltip.browse"))
+
         self.source_lang_label = QLabel(self._tr("label.source_language"))
         self.target_lang_label = QLabel(self._tr("label.target_language"))
         self.source_lang_edit = QComboBox()
@@ -210,88 +258,199 @@ class UIBuildMixin:
             self.source_lang_edit.addItem(f"{code} - {label}", code)
         self._set_language_combo_value(self.source_lang_edit, self._source_lang_code)
         self.source_lang_edit.currentIndexChanged.connect(lambda _value: self._store_language_pair())
+        self.source_lang_edit.setToolTip(self._tr("tooltip.source_language"))
         self.target_lang_edit = QComboBox()
         for code, label in LANGUAGE_OPTIONS:
             self.target_lang_edit.addItem(f"{code} - {label}", code)
         self._set_language_combo_value(self.target_lang_edit, self._target_lang_code)
         self.target_lang_edit.currentIndexChanged.connect(lambda _value: self._store_language_pair())
-
-        self.browse_source_button = QPushButton(self._tr("btn.browse"))
-        self.browse_source_button.clicked.connect(lambda: self._pick_directory(self.source_edit))
-        self.browse_target_button = QPushButton(self._tr("btn.browse"))
-        self.browse_target_button.clicked.connect(lambda: self._pick_directory(self.target_edit))
-        self.browse_en_ref_button = QPushButton(self._tr("btn.browse"))
-        self.browse_en_ref_button.clicked.connect(lambda: self._pick_directory(self.en_ref_edit))
-
-        self.include_infocards_check = QCheckBox(self._tr("check.infocards"))
-        self.include_infocards_check.setChecked(True)
-
-        self.load_source_button = QPushButton(self._tr("btn.load_source"))
-        self.load_source_button.clicked.connect(self._load_source_catalog)
-        self.compare_button = QPushButton(self._tr("btn.compare"))
-        self.compare_button.clicked.connect(self._load_compare_catalog)
-        self.export_button = QPushButton(self._tr("btn.export_visible"))
-        self.export_button.clicked.connect(self._export_visible_json)
-        self.export_mod_only_button = QPushButton(self._tr("btn.export_mod_only"))
-        self.export_mod_only_button.clicked.connect(self._export_mod_only_exchange)
-        self.export_long_open_button = QPushButton(self._tr("btn.export_long_open"))
-        self.export_long_open_button.clicked.connect(self._export_long_open_exchange)
-        self.import_exchange_button = QPushButton(self._tr("btn.import_exchange"))
-        self.import_exchange_button.clicked.connect(self._import_translation_exchange)
-        self.copy_audio_button = QPushButton(self._tr("btn.copy_audio"))
-        self.copy_audio_button.clicked.connect(self._copy_reference_audio_files)
-        self.merge_utf_button = QPushButton(self._tr("btn.merge_utf_audio"))
-        self.merge_utf_button.clicked.connect(self._merge_utf_audio_files)
-        self.assemble_patch_button = QPushButton(self._tr("btn.assemble_patch"))
-        self.assemble_patch_button.clicked.connect(self._assemble_patch_bundle)
-        self.apply_button = QPushButton(self._tr("btn.apply_target"))
-        self.apply_button.clicked.connect(self._apply_target_to_install)
-        self.toolchain_button = QPushButton(self._tr("btn.install_toolchain"))
-        self.toolchain_button.clicked.connect(self._install_toolchain)
-        self.toolchain_button.setEnabled(self._writer.is_windows())
+        self.target_lang_edit.setToolTip(self._tr("tooltip.target_language"))
 
         self.source_install_label = QLabel(self._tr("label.source_install"))
         self.target_install_label = QLabel(self._tr("label.target_install"))
         self.en_ref_install_label = QLabel(self._tr("label.en_vanilla_install"))
 
-        # Column 1: paths (label, edit, browse) — rows 0-2
         grid.addWidget(self.source_install_label, 0, 0)
         grid.addWidget(self.source_edit, 0, 1)
         grid.addWidget(self.browse_source_button, 0, 2)
+        grid.addWidget(self.source_lang_label, 0, 3)
+        grid.addWidget(self.source_lang_edit, 0, 4)
 
         grid.addWidget(self.target_install_label, 1, 0)
         grid.addWidget(self.target_edit, 1, 1)
         grid.addWidget(self.browse_target_button, 1, 2)
+        grid.addWidget(self.target_lang_label, 1, 3)
+        grid.addWidget(self.target_lang_edit, 1, 4)
 
         grid.addWidget(self.en_ref_install_label, 2, 0)
         grid.addWidget(self.en_ref_edit, 2, 1)
         grid.addWidget(self.browse_en_ref_button, 2, 2)
 
-        # Column 2: language combos + load/compare buttons — rows 0-1
-        grid.addWidget(self.load_source_button, 0, 3)
-        grid.addWidget(self.source_lang_label, 0, 4)
-        grid.addWidget(self.source_lang_edit, 0, 5)
+        layout.addLayout(grid)
+        self._refresh_toolchain_label()
+        return self.preparation_group
 
-        grid.addWidget(self.compare_button, 1, 3)
-        grid.addWidget(self.target_lang_label, 1, 4)
-        grid.addWidget(self.target_lang_edit, 1, 5)
-        self.source_lang_edit.setToolTip(self._tr("tooltip.source_language"))
-        self.target_lang_edit.setToolTip(self._tr("tooltip.target_language"))
+    def _build_scan_section(self) -> QGroupBox:
+        self.scan_section_group = QGroupBox(self._tr("expert.section.scan"))
+        layout = QVBoxLayout(self.scan_section_group)
 
-        # Column 3: action buttons — row 3
-        actions = QHBoxLayout()
-        actions.addWidget(self.include_infocards_check)
-        actions.addStretch(1)
-        actions.addWidget(self.toolchain_button)
-        actions.addWidget(self.assemble_patch_button)
-        actions.addWidget(self.copy_audio_button)
-        actions.addWidget(self.merge_utf_button)
-        actions.addWidget(self.import_exchange_button)
-        actions.addWidget(self.export_long_open_button)
-        actions.addWidget(self.export_mod_only_button)
-        actions.addWidget(self.export_button)
-        grid.addLayout(actions, 4, 0, 1, 6)
-        return self.paths_group
+        help_row = QHBoxLayout()
+        help_row.addWidget(self._make_help_button("expert.help.scan"))
+        scan_help_label = QLabel(self._tr("expert.help.scan"))
+        scan_help_label.setWordWrap(True)
+        scan_help_label.setStyleSheet("color: #8b95a7;")
+        help_row.addWidget(scan_help_label, 1)
+        layout.addLayout(help_row)
+
+        scan_row = QHBoxLayout()
+        self.scan_button = QPushButton(self._tr("btn.scan"))
+        self.scan_button.setMinimumHeight(40)
+        self.scan_button.clicked.connect(self._run_expert_scan)
+        self.scan_button.setToolTip(self._tr("tooltip.scan"))
+        self.include_infocards_check = QCheckBox(self._tr("check.infocards"))
+        self.include_infocards_check.setChecked(True)
+        self.include_infocards_check.setToolTip(self._tr("tooltip.include_infocards"))
+        scan_row.addWidget(self._make_help_button("tooltip.scan"))
+        scan_row.addWidget(self.scan_button)
+        scan_row.addWidget(self.include_infocards_check)
+        scan_row.addStretch(1)
+        layout.addLayout(scan_row)
+
+        self.expert_scan_summary_label = QLabel(self._tr("expert.scan.summary.idle"))
+        self.expert_scan_summary_label.setWordWrap(True)
+        layout.addWidget(self.expert_scan_summary_label)
+        return self.scan_section_group
+
+    def _build_editing_section(self) -> QGroupBox:
+        self.editing_section_group = QGroupBox(self._tr("expert.section.editing"))
+        layout = QVBoxLayout(self.editing_section_group)
+
+        help_row = QHBoxLayout()
+        help_row.addWidget(self._make_help_button("expert.help.editing"))
+        editing_help_label = QLabel(self._tr("expert.help.editing"))
+        editing_help_label.setWordWrap(True)
+        editing_help_label.setStyleSheet("color: #8b95a7;")
+        help_row.addWidget(editing_help_label, 1)
+        layout.addLayout(help_row)
+
+        btn_row = QHBoxLayout()
+        self.editing_link_button = QPushButton(self._tr("expert.editing.link"))
+        self.editing_link_button.clicked.connect(self._focus_editor_tab)
+        self.editing_link_button.setToolTip(self._tr("tooltip.editing_link"))
+        btn_row.addWidget(self._make_help_button("tooltip.editing_link"))
+        btn_row.addWidget(self.editing_link_button)
+        btn_row.addStretch(1)
+        layout.addLayout(btn_row)
+
+        self.editing_section_group.setVisible(False)
+        return self.editing_section_group
+
+    def _build_extras_section(self) -> QGroupBox:
+        self.extras_section_group = QGroupBox(self._tr("expert.section.extras"))
+        layout = QVBoxLayout(self.extras_section_group)
+
+        help_row = QHBoxLayout()
+        help_row.addWidget(self._make_help_button("expert.help.extras"))
+        extras_help_label = QLabel(self._tr("expert.help.extras"))
+        extras_help_label.setWordWrap(True)
+        extras_help_label.setStyleSheet("color: #8b95a7;")
+        help_row.addWidget(extras_help_label, 1)
+        layout.addLayout(help_row)
+
+        btn_row = QHBoxLayout()
+        self.export_mod_only_button = QPushButton(self._tr("btn.export_mod_only"))
+        self.export_mod_only_button.clicked.connect(self._export_mod_only_exchange)
+        self.export_mod_only_button.setToolTip(self._tr("tooltip.export_mod_only"))
+        self.export_long_open_button = QPushButton(self._tr("btn.export_long_open"))
+        self.export_long_open_button.clicked.connect(self._export_long_open_exchange)
+        self.export_long_open_button.setToolTip(self._tr("tooltip.export_long_open"))
+        self.import_exchange_button = QPushButton(self._tr("btn.import_exchange"))
+        self.import_exchange_button.clicked.connect(self._import_translation_exchange)
+        self.import_exchange_button.setToolTip(self._tr("tooltip.import_exchange"))
+        self.remove_imports_button = QPushButton(self._tr("expert.extras.remove_imports"))
+        self.remove_imports_button.clicked.connect(self._remove_imported_translations)
+        self.remove_imports_button.setToolTip(self._tr("tooltip.remove_imports"))
+
+        btn_row.addWidget(self._make_help_button("tooltip.export_mod_only"))
+        btn_row.addWidget(self.export_mod_only_button)
+        btn_row.addWidget(self._make_help_button("tooltip.export_long_open"))
+        btn_row.addWidget(self.export_long_open_button)
+        btn_row.addWidget(self._make_help_button("tooltip.import_exchange"))
+        btn_row.addWidget(self.import_exchange_button)
+        btn_row.addWidget(self._make_help_button("tooltip.remove_imports"))
+        btn_row.addWidget(self.remove_imports_button)
+        btn_row.addStretch(1)
+        layout.addLayout(btn_row)
+
+        self.import_count_label = QLabel(self._tr("expert.extras.import_count").format(count=0))
+        self.import_count_label.setWordWrap(True)
+        layout.addWidget(self.import_count_label)
+        return self.extras_section_group
+
+    def _build_translate_section(self) -> QGroupBox:
+        self.translate_section_group = QGroupBox(self._tr("expert.section.translate"))
+        layout = QVBoxLayout(self.translate_section_group)
+
+        help_row = QHBoxLayout()
+        help_row.addWidget(self._make_help_button("expert.help.translate"))
+        translate_help_label = QLabel(self._tr("expert.help.translate"))
+        translate_help_label.setWordWrap(True)
+        translate_help_label.setStyleSheet("color: #8b95a7;")
+        help_row.addWidget(translate_help_label, 1)
+        layout.addLayout(help_row)
+
+        btn_row = QHBoxLayout()
+        self.apply_button = QPushButton(self._tr("btn.translate_text"))
+        self.apply_button.clicked.connect(self._apply_target_to_install)
+        self.apply_button.setToolTip(self._tr("tooltip.translate_text"))
+        self.copy_audio_button = QPushButton(self._tr("btn.copy_audio"))
+        self.copy_audio_button.clicked.connect(self._copy_reference_audio_files)
+        self.copy_audio_button.setToolTip(self._tr("tooltip.copy_audio"))
+        self.merge_utf_button = QPushButton(self._tr("btn.merge_utf_audio"))
+        self.merge_utf_button.clicked.connect(self._merge_utf_audio_files)
+        self.merge_utf_button.setToolTip(self._tr("tooltip.merge_utf"))
+
+        btn_row.addWidget(self._make_help_button("tooltip.translate_text"))
+        btn_row.addWidget(self.apply_button)
+        btn_row.addWidget(self._make_help_button("tooltip.copy_audio"))
+        btn_row.addWidget(self.copy_audio_button)
+        btn_row.addWidget(self._make_help_button("tooltip.merge_utf"))
+        btn_row.addWidget(self.merge_utf_button)
+        btn_row.addStretch(1)
+        layout.addLayout(btn_row)
+
+        self.translate_all_button = QPushButton(self._tr("btn.translate_all"))
+        self.translate_all_button.clicked.connect(self._translate_all)
+        self.translate_all_button.setToolTip(self._tr("tooltip.translate_all"))
+        self.translate_all_button.setMinimumHeight(48)
+        self.translate_all_button.setStyleSheet(
+            "QPushButton {"
+            " background-color: #20c05c;"
+            " color: #ffffff;"
+            " font-size: 18px;"
+            " font-weight: 700;"
+            " border: 2px solid #83ffb0;"
+            " border-radius: 10px;"
+            " padding: 10px 20px;"
+            "}"
+            "QPushButton:hover {"
+            " background-color: #28d267;"
+            " border-color: #b8ffd0;"
+            "}"
+            "QPushButton:pressed {"
+            " background-color: #179949;"
+            "}"
+            "QPushButton:disabled {"
+            " background-color: #6a7a70;"
+            " color: #d7d7d7;"
+            " border-color: #89958d;"
+            "}"
+        )
+        layout.addWidget(self.translate_all_button)
+
+        layout.addWidget(self._build_progress_group())
+        layout.addWidget(self._build_apply_execution_group())
+        return self.translate_section_group
 
     def _build_dll_plan_group(self) -> QGroupBox:
         self.dll_group = QGroupBox(self._tr("group.dll_analysis"))
@@ -502,37 +661,19 @@ class UIBuildMixin:
     def _build_start_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.addWidget(self._build_paths_group())
-        layout.addWidget(self._build_progress_group())
-        layout.addWidget(self._build_main_workflow_page(), 1)
-        layout.addWidget(self._build_apply_execution_group())
-        self.primary_apply_button = QPushButton(self._tr("btn.apply_target"))
-        self.primary_apply_button.clicked.connect(self._apply_target_to_install)
-        self.primary_apply_button.setMinimumHeight(48)
-        self.primary_apply_button.setStyleSheet(
-            "QPushButton {"
-            " background-color: #20c05c;"
-            " color: #ffffff;"
-            " font-size: 18px;"
-            " font-weight: 700;"
-            " border: 2px solid #83ffb0;"
-            " border-radius: 10px;"
-            " padding: 10px 20px;"
-            "}"
-            "QPushButton:hover {"
-            " background-color: #28d267;"
-            " border-color: #b8ffd0;"
-            "}"
-            "QPushButton:pressed {"
-            " background-color: #179949;"
-            "}"
-            "QPushButton:disabled {"
-            " background-color: #6a7a70;"
-            " color: #d7d7d7;"
-            " border-color: #89958d;"
-            "}"
-        )
-        layout.addWidget(self.primary_apply_button)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.addWidget(self._build_preparation_section())
+        content_layout.addWidget(self._build_scan_section())
+        content_layout.addWidget(self._build_editing_section())
+        content_layout.addWidget(self._build_extras_section())
+        content_layout.addWidget(self._build_translate_section())
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
         return page
 
     def _build_apply_execution_group(self) -> QGroupBox:
@@ -566,41 +707,6 @@ class UIBuildMixin:
         self.editor_tabs.addTab(self._build_terminology_page(), self._tr("tab.terminology"))
         self.editor_tabs.addTab(self._build_mod_overrides_page(), self._tr("tab.mod_overrides"))
         layout.addWidget(self.editor_tabs)
-        return page
-
-    def _build_main_workflow_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        self.main_actions_group = QGroupBox(self._tr("group.main_actions"))
-        group_layout = QVBoxLayout(self.main_actions_group)
-        action_row = QHBoxLayout()
-        self.main_export_button = QPushButton(self._tr("btn.export_mod_only"))
-        self.main_export_button.clicked.connect(self._export_mod_only_exchange)
-        self.main_long_export_button = QPushButton(self._tr("btn.export_long_open"))
-        self.main_long_export_button.clicked.connect(self._export_long_open_exchange)
-        self.main_import_button = QPushButton(self._tr("btn.import_exchange"))
-        self.main_import_button.clicked.connect(self._import_translation_exchange)
-        self.main_copy_audio_button = QPushButton(self._tr("btn.copy_audio"))
-        self.main_copy_audio_button.clicked.connect(self._copy_reference_audio_files)
-        self.main_merge_utf_button = QPushButton(self._tr("btn.merge_utf_audio"))
-        self.main_merge_utf_button.clicked.connect(self._merge_utf_audio_files)
-        self.main_patch_button = QPushButton(self._tr("btn.assemble_patch"))
-        self.main_patch_button.clicked.connect(self._assemble_patch_bundle)
-        self.main_apply_button = QPushButton(self._tr("btn.apply_target"))
-        self.main_apply_button.clicked.connect(self._apply_target_to_install)
-        action_row.addWidget(self.main_export_button)
-        action_row.addWidget(self.main_long_export_button)
-        action_row.addWidget(self.main_import_button)
-        action_row.addWidget(self.main_copy_audio_button)
-        action_row.addWidget(self.main_merge_utf_button)
-        action_row.addWidget(self.main_patch_button)
-        action_row.addStretch(1)
-        group_layout.addLayout(action_row)
-        layout.addWidget(self.main_actions_group)
-        self.workflow_summary_label = QLabel(self._tr("summary.none"))
-        self.workflow_summary_label.setWordWrap(True)
-        layout.addWidget(self.workflow_summary_label)
-        layout.addStretch(1)
         return page
 
     def _build_editor_page(self) -> QWidget:

@@ -85,6 +85,7 @@ class TranslatorMainWindow(UIBuildMixin, UIStateMixin, UIEditorMixin, UISessionM
         self._search_debounce_timer.setSingleShot(True)
         self._search_debounce_timer.timeout.connect(self._refresh_table)
         self._apply_active = False
+        self._auto_translate_all = False
         self._apply_report: ApplyReport | None = None
         self._apply_error: str | None = None
         self._audio_progress_cache_key: tuple[str, str] | None = None

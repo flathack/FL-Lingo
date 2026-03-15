@@ -62,7 +62,8 @@ class UIEditorMixin:
                 ]
             )
         )
-        self.workflow_summary_label.setText(self.summary_label.text())
+        if hasattr(self, "workflow_summary_label"):
+            self.workflow_summary_label.setText(self.summary_label.text())
 
     def _update_preview(self) -> None:
         row = self.table.currentRow()

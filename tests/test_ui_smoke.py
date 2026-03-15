@@ -17,6 +17,14 @@ from flatlas_translator.resource_writer import ApplySessionInfo
 from flatlas_translator.ui_app import TranslatorMainWindow
 
 
+def _make_fake_install(base: Path) -> Path:
+    """Create a minimal Freelancer install structure with an EXE dir and a dummy DLL."""
+    exe_dir = base / "EXE"
+    exe_dir.mkdir(parents=True, exist_ok=True)
+    (exe_dir / "resources.dll").write_bytes(b"fake")
+    return base
+
+
 def _make_window(qtbot, monkeypatch, tmp_path: Path) -> TranslatorMainWindow:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     window = TranslatorMainWindow(LaunchConfig())
@@ -97,13 +105,14 @@ def test_editor_table_shows_current_and_old_text_columns(qtbot, monkeypatch, tmp
     )
     window._paired_catalog = _catalog(unit)
     window._populate_dll_filter(window._paired_catalog)
+    window.status_combo.setCurrentIndex(0)
     window._refresh_table()
 
-    assert window.table.columnCount() == 8
-    assert window.table.horizontalHeaderItem(6).text() == window._tr("table.units.preview")
-    assert window.table.horizontalHeaderItem(7).text() == window._tr("table.units.old_text")
-    assert window.table.item(0, 6).text() == "Deutscher Text"
+    assert window.table.columnCount() == 9
+    assert window.table.horizontalHeaderItem(7).text() == window._tr("table.units.preview")
+    assert window.table.horizontalHeaderItem(8).text() == window._tr("table.units.old_text")
     assert window.table.item(0, 7).text() == "Original English text"
+    assert window.table.item(0, 8).text() == "Original English text"
 
 
 def test_action_state_with_source_catalog_enables_workspace_but_not_apply(qtbot, monkeypatch, tmp_path: Path) -> None:
@@ -113,6 +122,8 @@ def test_action_state_with_source_catalog_enables_workspace_but_not_apply(qtbot,
         source=_location("resources.dll", 100),
         source_text="Mod text",
     )
+    window.source_edit.setText(str(_make_fake_install(tmp_path / "source")))
+    window.target_edit.setText(str(_make_fake_install(tmp_path / "target")))
     window._source_catalog = _catalog(unit)
     window._populate_dll_filter(window._source_catalog)
     window._refresh_table()
@@ -124,7 +135,7 @@ def test_action_state_with_source_catalog_enables_workspace_but_not_apply(qtbot,
     assert window.editor_tabs.isTabEnabled(2)
     assert not window.apply_button.isEnabled()
     assert not window.simple_translate_button.isEnabled()
-    assert window.compare_button.isEnabled()
+    assert window.scan_button.isEnabled()
 
 
 def test_action_state_with_paired_catalog_and_toolchain_enables_apply(qtbot, monkeypatch, tmp_path: Path) -> None:
@@ -274,8 +285,10 @@ def test_simple_mode_status_transitions_from_idle_to_loaded(qtbot, monkeypatch, 
     assert window.simple_translate_summary_label.text() == window._tr("simple.translate.idle")
     assert not window.simple_scan_button.isEnabled()
 
-    window.source_edit.setText("/tmp/source-game")
-    window.target_edit.setText("/tmp/target-game")
+    source_dir = _make_fake_install(tmp_path / "source-game")
+    target_dir = _make_fake_install(tmp_path / "target-game")
+    window.source_edit.setText(str(source_dir))
+    window.target_edit.setText(str(target_dir))
     window._source_catalog = _catalog(
         TranslationUnit(
             kind=ResourceKind.STRING,
@@ -293,31 +306,35 @@ def test_simple_mode_status_transitions_from_idle_to_loaded(qtbot, monkeypatch, 
 
 def test_simple_mode_scan_button_refreshes_when_simple_paths_change(qtbot, monkeypatch, tmp_path: Path) -> None:
     window = _make_window(qtbot, monkeypatch, tmp_path)
+    source_dir = _make_fake_install(tmp_path / "source-game")
+    target_dir = _make_fake_install(tmp_path / "target-game")
 
     assert not window.simple_scan_button.isEnabled()
 
-    window.simple_source_edit.setText("/tmp/source-game")
+    window.simple_source_edit.setText(str(source_dir))
     assert not window.simple_scan_button.isEnabled()
 
-    window.simple_target_edit.setText("/tmp/target-game")
+    window.simple_target_edit.setText(str(target_dir))
 
-    assert window.source_edit.text() == "/tmp/source-game"
-    assert window.target_edit.text() == "/tmp/target-game"
+    assert window.source_edit.text() == str(source_dir)
+    assert window.target_edit.text() == str(target_dir)
     assert window.simple_scan_button.isEnabled()
 
 
 def test_simple_mode_scan_button_refreshes_when_main_paths_change(qtbot, monkeypatch, tmp_path: Path) -> None:
     window = _make_window(qtbot, monkeypatch, tmp_path)
+    source_dir = _make_fake_install(tmp_path / "source-game")
+    target_dir = _make_fake_install(tmp_path / "target-game")
 
     assert not window.simple_scan_button.isEnabled()
 
-    window.source_edit.setText("/tmp/source-game")
+    window.source_edit.setText(str(source_dir))
     assert not window.simple_scan_button.isEnabled()
 
-    window.target_edit.setText("/tmp/target-game")
+    window.target_edit.setText(str(target_dir))
 
-    assert window.simple_source_edit.text() == "/tmp/source-game"
-    assert window.simple_target_edit.text() == "/tmp/target-game"
+    assert window.simple_source_edit.text() == str(source_dir)
+    assert window.simple_target_edit.text() == str(target_dir)
     assert window.simple_scan_button.isEnabled()
 
 

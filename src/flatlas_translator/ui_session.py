@@ -23,6 +23,52 @@ from .ui_themes import THEMES
 
 
 class UISessionMixin:
+    def _translate_all(self) -> None:
+        """Run text translation, then auto-copy audio and auto-merge UTF."""
+        self._auto_translate_all = True
+        self._apply_target_to_install()
+
+    def _remove_imported_translations(self) -> None:
+        """Remove all manually imported translations from the current catalog."""
+        catalog = self._paired_catalog or self._source_catalog
+        if catalog is None:
+            return
+        manual_count = sum(1 for u in catalog.units if u.manual_text)
+        if manual_count == 0:
+            return
+        reply = QMessageBox.question(
+            self,
+            self._tr("dialog.remove_imports_title"),
+            self._tr("dialog.remove_imports_confirm").format(count=manual_count),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        cleared_units = tuple(
+            TranslationUnit(
+                kind=u.kind,
+                source=u.source,
+                source_text=u.source_text,
+                target=u.target,
+                target_text=u.target_text,
+                manual_text="",
+            )
+            for u in catalog.units
+        )
+        cleared = ResourceCatalog(
+            install_dir=catalog.install_dir,
+            freelancer_ini=catalog.freelancer_ini,
+            units=cleared_units,
+        )
+        if self._paired_catalog is not None:
+            self._paired_catalog = cleared
+        else:
+            self._source_catalog = cleared
+        self._refresh_table()
+        self._update_action_state()
+        self._set_status(self._tr("status.imports_removed").format(count=manual_count))
+
     def _refresh_mod_override_entries(self) -> None:
         install_dir = self._backup_host_install_dir()
         if install_dir is None or not install_dir.exists():
@@ -209,7 +255,7 @@ class UISessionMixin:
         ]
 
     def _set_apply_buttons_enabled(self, enabled: bool) -> None:
-        for name in ("primary_apply_button", "main_apply_button", "apply_button"):
+        for name in ("translate_all_button", "apply_button", "simple_translate_button"):
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(enabled)
@@ -347,9 +393,12 @@ class UISessionMixin:
             audio_candidates = self._writer.list_audio_copy_candidates(source_install, reference_install)
             if audio_candidates:
                 auto_copy_audio = (
-                    hasattr(self, "simple_audio_copy_check")
-                    and self._ui_mode == "simple"
-                    and self.simple_audio_copy_check.isChecked()
+                    getattr(self, "_auto_translate_all", False)
+                    or (
+                        hasattr(self, "simple_audio_copy_check")
+                        and self._ui_mode == "simple"
+                        and self.simple_audio_copy_check.isChecked()
+                    )
                 )
                 if auto_copy_audio:
                     self._copy_reference_audio_candidates(
@@ -392,9 +441,12 @@ class UISessionMixin:
                         )
                         if utf_candidates:
                             auto_merge = (
-                                hasattr(self, "simple_audio_copy_check")
-                                and self._ui_mode == "simple"
-                                and self.simple_audio_copy_check.isChecked()
+                                getattr(self, "_auto_translate_all", False)
+                                or (
+                                    hasattr(self, "simple_audio_copy_check")
+                                    and self._ui_mode == "simple"
+                                    and self.simple_audio_copy_check.isChecked()
+                                )
                             )
                             if auto_merge:
                                 utf_report = self._run_with_progress(
@@ -439,6 +491,7 @@ class UISessionMixin:
                                     ))
                     except Exception:
                         pass
+        self._auto_translate_all = False
         self._load_source_catalog()
         self._load_compare_catalog()
 
@@ -711,7 +764,6 @@ class UISessionMixin:
         if catalog is None:
             self.table.setRowCount(0)
             self.summary_label.setText(self._tr("summary.none"))
-            self.workflow_summary_label.setText(self._tr("summary.none"))
             self._refresh_dll_plan_table()
             self.source_preview.clear()
             self.target_preview.clear()

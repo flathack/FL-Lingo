@@ -8,11 +8,62 @@ from PySide6.QtWidgets import QComboBox, QLineEdit, QTableWidgetItem
 
 from .dll_plans import DllStrategy
 from .models import ResourceCatalog
+from .path_utils import ci_find
 from .stats import summarize_catalog
 from .terminology import clear_term_map_cache
 
+_VALID_STYLE = ""
+_INVALID_STYLE = "border: 2px solid #c62828;"
+
 
 class UIStateMixin:
+    def _validate_install_path(self, path_str: str) -> str | None:
+        """Return None if valid, or an error message string if not."""
+        if not path_str:
+            return None  # empty is not an error, just not ready
+        install_dir = Path(path_str)
+        if not install_dir.is_dir():
+            return self._tr("validate.no_exe_dir").format(path=path_str)
+        exe_dir = ci_find(install_dir, "EXE")
+        if exe_dir is None or not exe_dir.is_dir():
+            return self._tr("validate.no_exe_dir").format(path=path_str)
+        has_dll = any(f.suffix.lower() == ".dll" for f in exe_dir.iterdir() if f.is_file())
+        if not has_dll:
+            return self._tr("validate.no_dlls").format(path=exe_dir)
+        return None
+
+    def _style_path_field(self, edit: QLineEdit, error: str | None) -> None:
+        if error:
+            edit.setStyleSheet(_INVALID_STYLE)
+            edit.setToolTip(error)
+        else:
+            edit.setStyleSheet(_VALID_STYLE)
+            text = edit.text().strip()
+            edit.setToolTip(self._tr("validate.ok") if text else "")
+
+    def _validate_and_style_paths(self) -> bool:
+        """Validate all path fields, apply styling, return True if source+target are valid."""
+        source_err = self._validate_install_path(self.source_edit.text().strip())
+        target_err = self._validate_install_path(self.target_edit.text().strip())
+        self._style_path_field(self.source_edit, source_err)
+        self._style_path_field(self.target_edit, target_err)
+        if hasattr(self, "simple_source_edit"):
+            self._style_path_field(self.simple_source_edit, source_err)
+        if hasattr(self, "simple_target_edit"):
+            self._style_path_field(self.simple_target_edit, target_err)
+        # en_ref is optional
+        en_ref_text = ""
+        if hasattr(self, "en_ref_edit"):
+            en_ref_text = self.en_ref_edit.text().strip()
+        en_ref_err = self._validate_install_path(en_ref_text) if en_ref_text else None
+        if hasattr(self, "en_ref_edit"):
+            self._style_path_field(self.en_ref_edit, en_ref_err)
+        if hasattr(self, "simple_en_ref_edit"):
+            self._style_path_field(self.simple_en_ref_edit, en_ref_err)
+        source_ok = bool(self.source_edit.text().strip()) and source_err is None
+        target_ok = bool(self.target_edit.text().strip()) and target_err is None
+        return source_ok and target_ok
+
     def _handle_install_path_change(self, _value: str = "") -> None:
         self._invalidate_audio_progress_cache()
         self._update_action_state()
@@ -91,6 +142,27 @@ class UIStateMixin:
 
     def _run_simple_scan(self) -> None:
         self._load_compare_catalog()
+
+    def _run_expert_scan(self) -> None:
+        self._load_compare_catalog()
+
+    def _refresh_expert_scan_summary(self) -> None:
+        if not hasattr(self, "expert_scan_summary_label"):
+            return
+        if self._paired_catalog is not None:
+            stats = summarize_catalog(self._paired_catalog)
+            affected_dlls = len({unit.source.dll_name.lower() for unit in self._paired_catalog.units})
+            self.expert_scan_summary_label.setText(
+                self._tr("expert.scan.summary.ready").format(
+                    total=len(self._paired_catalog.units),
+                    auto=stats.auto_relocalize,
+                    manual=stats.manual_translation,
+                    open=stats.mod_only,
+                    dlls=affected_dlls,
+                )
+            )
+        else:
+            self.expert_scan_summary_label.setText(self._tr("expert.scan.summary.idle"))
 
     def _refresh_simple_mode(self) -> None:
         if not hasattr(self, "simple_scan_summary_label"):
@@ -218,36 +290,35 @@ class UIStateMixin:
         has_catalog = self._current_catalog() is not None
         has_toolchain = self._writer.has_toolchain()
         can_apply = has_comparison and has_toolchain and not self._apply_active
-        can_simple_scan = bool(self.source_edit.text().strip()) and bool(self.target_edit.text().strip()) and not self._apply_active
-        can_audio = bool(self.source_edit.text().strip()) and bool(self.target_edit.text().strip()) and not self._apply_active
+        paths_valid = self._validate_and_style_paths()
+        can_simple_scan = paths_valid and not self._apply_active
+        can_audio = paths_valid and not self._apply_active
         apply_tooltip = ""
         if not has_comparison:
             apply_tooltip = self._tr("tooltip.apply_disabled_compare")
         elif not has_toolchain:
             apply_tooltip = self._tr("tooltip.apply_disabled_toolchain")
-        if hasattr(self, "compare_button"):
-            self.compare_button.setEnabled(has_source)
-            self.export_button.setEnabled(has_catalog)
+        if hasattr(self, "scan_button"):
+            self.scan_button.setEnabled(can_simple_scan)
             self.export_mod_only_button.setEnabled(has_catalog)
             self.export_long_open_button.setEnabled(has_catalog)
             self.import_exchange_button.setEnabled(has_catalog)
+            self.remove_imports_button.setEnabled(has_catalog)
             self.copy_audio_button.setEnabled(can_audio)
             self.merge_utf_button.setEnabled(can_audio)
-            self.assemble_patch_button.setEnabled(can_audio)
             self.apply_button.setEnabled(can_apply)
             self.apply_button.setToolTip(apply_tooltip)
-        if hasattr(self, "primary_apply_button"):
-            self.primary_apply_button.setEnabled(can_apply)
-            self.primary_apply_button.setToolTip(apply_tooltip)
-        if hasattr(self, "main_export_button"):
-            self.main_export_button.setEnabled(has_catalog)
-            self.main_long_export_button.setEnabled(has_catalog)
-            self.main_import_button.setEnabled(has_catalog)
-            self.main_copy_audio_button.setEnabled(can_audio)
-            self.main_merge_utf_button.setEnabled(can_audio)
-            self.main_patch_button.setEnabled(can_audio)
-            self.main_apply_button.setEnabled(can_apply)
-            self.main_apply_button.setToolTip(apply_tooltip)
+        if hasattr(self, "translate_all_button"):
+            self.translate_all_button.setEnabled(can_apply)
+            self.translate_all_button.setToolTip(apply_tooltip)
+        if hasattr(self, "editing_section_group"):
+            self.editing_section_group.setVisible(has_comparison)
+        if hasattr(self, "expert_scan_summary_label"):
+            self._refresh_expert_scan_summary()
+        if hasattr(self, "import_count_label"):
+            catalog = self._current_catalog()
+            manual_count = sum(1 for u in catalog.units if u.manual_text) if catalog is not None else 0
+            self.import_count_label.setText(self._tr("expert.extras.import_count").format(count=manual_count))
         if hasattr(self, "root_tabs"):
             self.root_tabs.setTabEnabled(0, True)
             self.root_tabs.setTabEnabled(1, has_catalog)

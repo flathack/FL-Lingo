@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import ssl
+import subprocess
+import sys
+import tempfile
+import time
+import zipfile
 from pathlib import Path
 from urllib import request as urlrequest
 
@@ -25,7 +32,6 @@ from PySide6.QtWidgets import (
 from .catalog import pair_catalogs
 from .dll_plans import DllStrategy, build_dll_plans
 from .exporters import export_catalog_json
-from .localization import resolve_help_file
 from .mod_overrides import apply_mod_overrides
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
 from .project_io import PROJECT_FILE_EXTENSION, load_project, project_signature, save_project
@@ -685,19 +691,29 @@ class UIWorkflowMixin:
         parts = re.findall(r"\d+", str(version_text or ""))
         return tuple(int(part) for part in parts)
 
-    def _fetch_latest_release_info(self) -> tuple[bool, dict[str, str] | None, str]:
+    def _fetch_latest_release_info(self) -> tuple[bool, dict[str, object] | None, str]:
         req = urlrequest.Request(
             self._latest_release_api,
             headers={"Accept": "application/vnd.github+json", "User-Agent": "FL-Lingo-Updater"},
         )
 
-        def _api_try(context=None) -> dict[str, str] | None:
+        def _api_try(context=None) -> dict[str, object] | None:
             with urlrequest.urlopen(req, timeout=12.0, context=context) as resp:
                 payload = json.loads(resp.read().decode("utf-8", errors="replace"))
             if isinstance(payload, dict) and str(payload.get("tag_name", "")).strip():
+                assets_raw = payload.get("assets") or []
+                assets = []
+                if isinstance(assets_raw, list):
+                    for a in assets_raw:
+                        if isinstance(a, dict):
+                            name = str(a.get("name", "")).strip()
+                            url = str(a.get("browser_download_url", "")).strip()
+                            if name and url:
+                                assets.append({"name": name, "browser_download_url": url})
                 return {
                     "tag_name": str(payload.get("tag_name", "")).strip(),
                     "html_url": str(payload.get("html_url", "")).strip() or self._repo_url,
+                    "assets": assets,
                 }
             return None
 
@@ -749,7 +765,7 @@ class UIWorkflowMixin:
         if ok and info is not None:
             self._handle_update_result(info, manual=False)
 
-    def _handle_update_result(self, info: dict[str, str], *, manual: bool) -> None:
+    def _handle_update_result(self, info: dict[str, object], *, manual: bool) -> None:
         latest_tag = str(info.get("tag_name", "") or "").strip()
         latest_url = str(info.get("html_url", "") or "").strip() or self._repo_url
         current = self._normalize_version_tuple(self._config.app_version)
@@ -769,9 +785,158 @@ class UIWorkflowMixin:
         suppressed_tag = str(self._settings.value("updates/suppressed_tag", "") or "").strip().lower()
         if (not manual) and suppressed_tag == latest_tag.lower():
             return
-        self._show_update_available_dialog(latest_tag, latest_url, manual=manual)
+        self._show_update_available_dialog(latest_tag, latest_url, info=info, manual=manual)
 
-    def _show_update_available_dialog(self, latest_tag: str, latest_url: str, *, manual: bool) -> None:
+    # ------------------------------------------------------------------
+    # Self-update helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_packaged_windows_release() -> bool:
+        """Return True when running as a frozen PyInstaller .exe on Windows."""
+        return getattr(sys, "frozen", False) and sys.platform == "win32"
+
+    @staticmethod
+    def _select_release_asset(assets: list[dict[str, str]]) -> dict[str, str] | None:
+        """Pick the best asset from a GitHub release for Windows self-update.
+
+        Preference order:
+        1. .zip whose name contains 'windows' or 'win'
+        2. Any .zip
+        3. .exe whose name contains 'setup' / 'install' / 'windows'
+        """
+        zips_win = [a for a in assets if a["name"].lower().endswith(".zip") and re.search(r"win|windows", a["name"], re.I)]
+        if zips_win:
+            return zips_win[0]
+        zips_any = [a for a in assets if a["name"].lower().endswith(".zip")]
+        if zips_any:
+            return zips_any[0]
+        exes = [a for a in assets if a["name"].lower().endswith(".exe") and re.search(r"setup|install|win", a["name"], re.I)]
+        if exes:
+            return exes[0]
+        return None
+
+    def _download_url_to_file(self, url: str, dest: Path, *, progress_cb=None) -> None:
+        """Download *url* to *dest*, calling *progress_cb(percent)* periodically."""
+        req = urlrequest.Request(url, headers={"User-Agent": "FL-Lingo-Updater"})
+        try:
+            resp = urlrequest.urlopen(req, timeout=120)
+        except Exception:
+            ctx = ssl._create_unverified_context()
+            resp = urlrequest.urlopen(req, timeout=120, context=ctx)
+        with resp:
+            total = int(resp.headers.get("Content-Length", 0) or 0)
+            downloaded = 0
+            block_size = 1 << 16  # 64 KiB
+            with open(dest, "wb") as fh:
+                while True:
+                    chunk = resp.read(block_size)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_cb and total > 0:
+                        progress_cb(int(downloaded * 100 / total))
+
+    def _start_frozen_windows_self_update(self, info: dict[str, object]) -> None:
+        """Download the release asset, extract if needed, launch the updater, and quit."""
+        assets = info.get("assets") or []
+        asset = self._select_release_asset(assets)
+        if asset is None:
+            QMessageBox.warning(self, self._tr("updates.title"), self._tr("updates.no_asset"))
+            return
+
+        download_url = asset["browser_download_url"]
+        asset_name = asset["name"]
+        timestamp = int(time.time())
+        temp_dir = Path(tempfile.gettempdir())
+
+        archive_path = temp_dir / f"fllingo_update_{timestamp}_{asset_name}"
+
+        # Show a progress dialog while downloading
+        self._set_status(self._tr("status.update_downloading"))
+        progress = QProgressDialog(self._tr("updates.download_progress").format(percent=0), "", 0, 100, self)
+        progress.setWindowTitle(self._tr("updates.title"))
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(True)
+        progress.show()
+        QApplication.processEvents()
+
+        def _update_progress(pct: int) -> None:
+            progress.setValue(pct)
+            progress.setLabelText(self._tr("updates.download_progress").format(percent=pct))
+            QApplication.processEvents()
+
+        try:
+            self._download_url_to_file(download_url, archive_path, progress_cb=_update_progress)
+        except Exception as exc:
+            progress.close()
+            QMessageBox.critical(self, self._tr("updates.title"), self._tr("updates.download_failed").format(error=exc))
+            return
+        progress.close()
+
+        # Determine mode
+        is_zip = asset_name.lower().endswith(".zip")
+        mode = "zip" if is_zip else "installer"
+        extract_root: Path | None = None
+
+        if is_zip:
+            extract_root = temp_dir / f"fllingo_update_extract_{timestamp}"
+            try:
+                with zipfile.ZipFile(archive_path, "r") as zf:
+                    zf.extractall(extract_root)
+            except Exception as exc:
+                QMessageBox.critical(self, self._tr("updates.title"), self._tr("updates.extract_failed").format(error=exc))
+                return
+
+        # Resolve paths
+        exe_path = Path(sys.executable).resolve()
+        install_root = exe_path.parent
+        updater_name = "FLLingoUpdater.exe"
+        updater_exe = install_root / updater_name
+        if not updater_exe.exists():
+            updater_exe = install_root / "_internal" / updater_name
+
+        # Build the command that launches the updater after a short delay
+        cmd_parts = [
+            f'"{updater_exe}"',
+            f"--mode {mode}",
+            f"--wait-pid {os.getpid()}",
+            f'--install-root "{install_root}"',
+            f'--archive-path "{archive_path}"',
+            f'--exe-path "{exe_path}"',
+        ]
+        if extract_root is not None:
+            cmd_parts.append(f'--extract-root "{extract_root}"')
+
+        cmd_script = temp_dir / f"fllingo_update_{timestamp}.cmd"
+        cmd_script.write_text(
+            "@echo off\n"
+            f"timeout /t 2 /nobreak >nul\n"
+            f"{' '.join(cmd_parts)}\n"
+            f"del \"%~f0\"\n",
+            encoding="utf-8",
+        )
+
+        CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            subprocess.Popen(
+                ["cmd.exe", "/c", str(cmd_script)],
+                creationflags=CREATE_NO_WINDOW,
+                close_fds=True,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, self._tr("updates.title"), self._tr("updates.launch_failed"))
+            return
+
+        self._set_status(self._tr("status.update_installing"))
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(150, QApplication.instance().quit)
+
+    def _show_update_available_dialog(self, latest_tag: str, latest_url: str, *, info: dict[str, object] | None = None, manual: bool) -> None:
+        can_self_update = self._is_packaged_windows_release() and info is not None and self._select_release_asset(info.get("assets") or []) is not None
+
         dialog = QMessageBox(self)
         dialog.setIcon(QMessageBox.Information)
         dialog.setWindowTitle(self._tr("updates.title"))
@@ -781,11 +946,22 @@ class UIWorkflowMixin:
                 latest=latest_tag,
             )
         )
-        dialog.setInformativeText(self._tr("updates.available_info"))
+        if can_self_update:
+            dialog.setInformativeText(self._tr("updates.available_info_install"))
+        else:
+            dialog.setInformativeText(self._tr("updates.available_info"))
+        install_button = None
+        if can_self_update:
+            install_button = dialog.addButton(self._tr("updates.install_update"), QMessageBox.YesRole)
         open_button = dialog.addButton(self._tr("updates.open_release"), QMessageBox.AcceptRole)
         dialog.addButton(QMessageBox.Close)
         dialog.exec()
-        if dialog.clickedButton() is open_button:
+        clicked = dialog.clickedButton()
+        if clicked is install_button and info is not None:
+            self._settings.setValue("updates/suppressed_tag", "")
+            self._start_frozen_windows_self_update(info)
+            return
+        if clicked is open_button:
             QDesktopServices.openUrl(QUrl(latest_url))
             self._settings.setValue("updates/suppressed_tag", "")
             return
@@ -815,25 +991,13 @@ class UIWorkflowMixin:
         dialog.exec()
 
     def _show_help_dialog(self) -> None:
-        try:
-            help_path = resolve_help_file(self._lang if self._lang in ("de", "en") else "en")
-            help_html = help_path.read_text(encoding="utf-8")
-        except Exception as exc:
-            self._show_error(self._tr("error.help_open_failed").format(error=exc))
-            return
-        dialog = QDialog(self)
-        dialog.setWindowTitle(self._tr("dialog.help.title"))
-        dialog.resize(980, 760)
-        layout = QVBoxLayout(dialog)
-        browser = QTextBrowser(dialog)
-        browser.setOpenExternalLinks(True)
-        browser.setHtml(help_html)
-        layout.addWidget(browser)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close, dialog)
-        buttons.rejected.connect(dialog.reject)
-        buttons.accepted.connect(dialog.accept)
-        layout.addWidget(buttons)
-        dialog.exec()
+        help_urls = {
+            "de": "https://github.com/flathack/FL-Lingo/wiki/Hilfe-%E2%80%90-DE",
+            "en": "https://github.com/flathack/FL-Lingo/wiki/Help-%E2%80%90-EN",
+        }
+        lang = self._lang if self._lang in help_urls else "en"
+        url = help_urls[lang]
+        QDesktopServices.openUrl(QUrl(url))
 
     def _run_with_progress(self, title: str, label: str, callback):
         progress = QProgressDialog(label, "", 0, 0, self)

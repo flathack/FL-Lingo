@@ -206,6 +206,8 @@ class BulkTranslateDialog(QDialog):
 
         # --- buttons ---
         btn_row = QHBoxLayout()
+        self.preview_button = QPushButton(tr("dialog.bulk_preview"))
+        self.preview_button.clicked.connect(self._on_preview)
         self.start_button = QPushButton(tr("dialog.bulk_start"))
         self.start_button.clicked.connect(self._on_start)
         self.pause_button = QPushButton(tr("dialog.bulk_pause"))
@@ -214,6 +216,7 @@ class BulkTranslateDialog(QDialog):
         self.close_button = QPushButton(tr("dialog.bulk_close"))
         self.close_button.clicked.connect(self._on_close)
         btn_row.addStretch(1)
+        btn_row.addWidget(self.preview_button)
         btn_row.addWidget(self.start_button)
         btn_row.addWidget(self.pause_button)
         btn_row.addWidget(self.close_button)
@@ -242,6 +245,22 @@ class BulkTranslateDialog(QDialog):
     def filtered_units(self) -> list[Any]:
         min_len = self.min_length_spin.value()
         return [u for u in self._units if len(u.source_text.strip()) >= min_len]
+
+    def _on_preview(self) -> None:
+        """Show all entries that would be translated without starting translation."""
+        units = self.filtered_units
+        min_len = self.min_length_spin.value()
+        self.result_table.setRowCount(0)
+        for unit in units:
+            ref = f"{unit.source.dll_name}:{unit.source.local_id}"
+            source_text = unit.source_text
+            self._append_table_row(ref, source_text, "")
+        self.info_label.setText(
+            self._tr("dialog.bulk_preview_info").format(count=len(units), min_len=min_len)
+        )
+        self.status_label.setText(
+            self._tr("dialog.bulk_preview_info").format(count=len(units), min_len=min_len)
+        )
 
     def _on_start(self) -> None:
         units = self.filtered_units

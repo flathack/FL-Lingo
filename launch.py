@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 DEVELOPED_BY = "Developed by Aldenmar Odin - flathack"
 APP_TITLE = "FL Lingo"
 DEFAULT_LANGUAGE = "en"

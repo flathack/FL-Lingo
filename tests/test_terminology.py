@@ -85,6 +85,8 @@ def test_apply_known_term_suggestions_translates_structured_npc_entry() -> None:
     updated = apply_known_term_suggestions(catalog)
 
     assert updated.units[2].manual_text == "Gilde der Kopfgeldjaeger\nAusruestungshaendler\nJohn Fahrenheit"
+    assert updated.units[2].translation_source == "terminology"
+    assert updated.units[0].translation_source == ""  # unchanged units keep empty source
 
 
 def test_apply_known_term_suggestions_translates_known_terms_inside_composite_npc_line() -> None:

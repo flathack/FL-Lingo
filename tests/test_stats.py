@@ -71,3 +71,43 @@ def test_calculate_translation_progress_counts_skipped_mod_only_entries() -> Non
     assert progress.skipped == 1
     assert progress.done_percent == 33
     assert progress.covered_percent == 67
+
+
+def test_calculate_translation_progress_counts_terminology_separately() -> None:
+    source = ResourceLocation(
+        dll_name="NameResources.dll",
+        dll_path=Path("C:/dummy/NameResources.dll"),
+        local_id=1,
+        slot=1,
+        global_id=make_global_id(1, 1),
+    )
+    target = ResourceLocation(
+        dll_name="NameResources.dll",
+        dll_path=Path("C:/dummy2/NameResources.dll"),
+        local_id=1,
+        slot=1,
+        global_id=make_global_id(1, 1),
+    )
+    catalog = ResourceCatalog(
+        install_dir=Path("C:/source"),
+        freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
+        units=(
+            TranslationUnit(ResourceKind.STRING, source, "New York", target, "Neu York"),
+            TranslationUnit(ResourceKind.STRING, source, "Equipment Dealer",
+                            manual_text="Ausrüstungshändler", translation_source="terminology"),
+            TranslationUnit(ResourceKind.STRING, source, "Custom mod text"),
+            TranslationUnit(ResourceKind.STRING, source, "Auto done",
+                            manual_text="Auto fertig", translation_source="auto_translate"),
+        ),
+    )
+
+    progress = calculate_translation_progress(catalog)
+
+    assert progress.total == 4
+    assert progress.done == 2  # AUTO_RELOCALIZE + MANUAL_TRANSLATION (not terminology)
+    assert progress.terminology == 1
+    assert progress.manual == 1
+    assert progress.localized == 0
+    assert progress.skipped == 0
+    # covered = done(2) + terminology(1) + skipped(0) = 3 out of 4 = 75%
+    assert progress.covered_percent == 75

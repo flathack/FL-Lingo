@@ -36,7 +36,7 @@ from .mod_overrides import apply_mod_overrides
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
 from .project_io import PROJECT_FILE_EXTENSION, load_project, project_signature, save_project
 from .terminology import apply_known_term_suggestions, clear_term_map_cache, resolve_terminology_file
-from .translation_exchange import export_long_open_exchange, export_mod_only_exchange, import_exchange
+from .translation_exchange import export_all_translated, export_long_open_exchange, export_mod_only_exchange, import_exchange
 
 
 class UIWorkflowMixin:
@@ -387,6 +387,33 @@ class UIWorkflowMixin:
             + f": {output_path}"
         )
 
+    def _export_all_translated(self) -> None:
+        catalog = self._current_catalog()
+        if catalog is None:
+            self._show_error(self._tr("error.load_first"))
+            return
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            self._tr("btn.export_all_translated"),
+            str(Path.cwd() / "build" / "all-translated-exchange.json"),
+            "JSON Files (*.json)",
+        )
+        if not output_path:
+            return
+        try:
+            report = self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.export_all_translated"),
+                lambda: export_all_translated(catalog, Path(output_path)),
+            )
+        except Exception as exc:
+            self._show_error(self._tr("error.export_all_translated_failed").format(error=exc))
+            return
+        self._set_status(
+            self._tr("status.export_all_translated").format(exported=report.exported_entries)
+            + f": {output_path}"
+        )
+
     def _import_translation_exchange(self) -> None:
         catalog = self._current_catalog()
         if catalog is None:
@@ -626,7 +653,7 @@ class UIWorkflowMixin:
         preview_box = QMessageBox(self)
         preview_box.setIcon(QMessageBox.Question)
         preview_box.setWindowTitle(self._tr("dialog.apply_preview"))
-        _localized, done, skipped, total, _percent, covered_percent = self._translation_progress()
+        _localized, done, skipped, total, _percent, covered_percent, _manual, _terminology = self._translation_progress()
         confirm_key = "dialog.apply_confirm_resume" if session is not None and session.pending_dlls else "dialog.apply_confirm"
         confirm_payload = {
             "count": len(units),

@@ -165,6 +165,7 @@ def apply_known_term_suggestions(catalog: ResourceCatalog, *, target_language: s
                 target=unit.target,
                 target_text=unit.target_text,
                 manual_text=suggestion,
+                translation_source="terminology",
             )
         )
     return ResourceCatalog(

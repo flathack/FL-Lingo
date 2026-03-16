@@ -17,6 +17,7 @@ class CatalogStats:
     already_localized: int
     mod_only: int
     manual_translation: int
+    terminology_translation: int
     skipped_mod_only: int
 
 
@@ -26,6 +27,8 @@ class TranslationProgress:
     localized: int
     done: int
     skipped: int
+    manual: int = 0
+    terminology: int = 0
 
     @property
     def done_percent(self) -> int:
@@ -33,7 +36,7 @@ class TranslationProgress:
 
     @property
     def covered_percent(self) -> int:
-        covered = self.done + self.skipped
+        covered = self.done + self.skipped + self.terminology
         return 0 if self.total == 0 else round((covered / self.total) * 100)
 
 
@@ -47,6 +50,7 @@ def summarize_catalog(catalog: ResourceCatalog, kind: ResourceKind | None = None
         already_localized=sum(1 for unit in units if unit.status == RelocalizationStatus.ALREADY_LOCALIZED),
         mod_only=sum(1 for unit in units if unit.status == RelocalizationStatus.MOD_ONLY),
         manual_translation=sum(1 for unit in units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION),
+        terminology_translation=sum(1 for unit in units if unit.status == RelocalizationStatus.TERMINOLOGY_TRANSLATION),
         skipped_mod_only=sum(1 for unit in units if is_unit_skippable(unit)),
     )
 
@@ -57,6 +61,16 @@ def calculate_translation_progress(catalog: ResourceCatalog) -> TranslationProgr
         1
         for unit in units
         if unit.status == RelocalizationStatus.ALREADY_LOCALIZED
+    )
+    manual = sum(
+        1
+        for unit in units
+        if unit.status == RelocalizationStatus.MANUAL_TRANSLATION
+    )
+    terminology = sum(
+        1
+        for unit in units
+        if unit.status == RelocalizationStatus.TERMINOLOGY_TRANSLATION
     )
     done = sum(
         1
@@ -69,4 +83,4 @@ def calculate_translation_progress(catalog: ResourceCatalog) -> TranslationProgr
         }
     )
     skipped = sum(1 for unit in units if is_unit_skippable(unit))
-    return TranslationProgress(total=len(units), localized=localized, done=done, skipped=skipped)
+    return TranslationProgress(total=len(units), localized=localized, done=done, skipped=skipped, manual=manual, terminology=terminology)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import time
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
@@ -141,6 +143,7 @@ class BulkTranslateDialog(QDialog):
         self._current_index = 0
         self._translated_units: list[Any] = []
         self._log_entries: list[tuple[str, str, str]] = list(log_entries) if log_entries else []
+        self._translate_times: list[float] = []
         self._timer = QTimer(self)
         self._timer.setInterval(50)
         self._timer.timeout.connect(self._translate_next)
@@ -177,6 +180,10 @@ class BulkTranslateDialog(QDialog):
 
         self.progress_label = QLabel(tr("dialog.bulk_progress").format(done=0, total=total_open))
         layout.addWidget(self.progress_label)
+
+        self.eta_label = QLabel("")
+        self.eta_label.setStyleSheet("color: #8b95a7;")
+        layout.addWidget(self.eta_label)
 
         # --- result table (old text | new text) ---
         self.result_table = QTableWidget()
@@ -247,19 +254,26 @@ class BulkTranslateDialog(QDialog):
         return [u for u in self._units if len(u.source_text.strip()) >= min_len]
 
     def _on_preview(self) -> None:
-        """Show all entries that would be translated without starting translation."""
+        """Show all entries that would be translated, with progress bar."""
         units = self.filtered_units
         min_len = self.min_length_spin.value()
+        total = len(units)
         self.result_table.setRowCount(0)
-        for unit in units:
+        self.progress_bar.setMaximum(max(total, 1))
+        self.progress_bar.setValue(0)
+        self.eta_label.setText("")
+        for i, unit in enumerate(units):
             ref = f"{unit.source.dll_name}:{unit.source.local_id}"
             source_text = unit.source_text
             self._append_table_row(ref, source_text, "")
+            self.progress_bar.setValue(i + 1)
+            if (i + 1) % 50 == 0 or i + 1 == total:
+                QApplication.processEvents()
         self.info_label.setText(
-            self._tr("dialog.bulk_preview_info").format(count=len(units), min_len=min_len)
+            self._tr("dialog.bulk_preview_info").format(count=total, min_len=min_len)
         )
         self.status_label.setText(
-            self._tr("dialog.bulk_preview_info").format(count=len(units), min_len=min_len)
+            self._tr("dialog.bulk_preview_info").format(count=total, min_len=min_len)
         )
 
     def _on_start(self) -> None:
@@ -270,10 +284,12 @@ class BulkTranslateDialog(QDialog):
         self._units_to_process = units
         self._current_index = 0
         self._done = 0
+        self._translate_times = []
         total = len(units)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(0)
         self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=0, total=total))
+        self.eta_label.setText("")
         self.start_button.setEnabled(False)
         self.min_length_spin.setEnabled(False)
         self.pause_button.setEnabled(True)
@@ -303,6 +319,27 @@ class BulkTranslateDialog(QDialog):
             self._save_progress_fn(self._translated_units)
         self.accept()
 
+    def _format_eta(self, remaining_seconds: float) -> str:
+        """Format remaining seconds into a human-readable string."""
+        remaining = int(remaining_seconds)
+        if remaining < 60:
+            return self._tr("dialog.bulk_eta_seconds").format(seconds=remaining)
+        minutes, secs = divmod(remaining, 60)
+        if minutes < 60:
+            return self._tr("dialog.bulk_eta_minutes").format(minutes=minutes, seconds=secs)
+        hours, minutes = divmod(minutes, 60)
+        return self._tr("dialog.bulk_eta_hours").format(hours=hours, minutes=minutes)
+
+    def _update_eta(self) -> None:
+        """Calculate and display estimated time remaining."""
+        if not self._translate_times or not hasattr(self, "_units_to_process"):
+            self.eta_label.setText("")
+            return
+        avg_time = sum(self._translate_times) / len(self._translate_times)
+        remaining = len(self._units_to_process) - self._current_index
+        eta_seconds = avg_time * remaining
+        self.eta_label.setText(self._format_eta(eta_seconds))
+
     def _translate_next(self) -> None:
         if self._paused:
             return
@@ -323,15 +360,21 @@ class BulkTranslateDialog(QDialog):
             self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
             return
         ref = f"{unit.source.dll_name}:{unit.source.local_id}"
+        t0 = time.monotonic()
         try:
             translated = self._translate_fn(source_text, self._source_lang, self._target_lang)
         except Exception as exc:
+            elapsed = time.monotonic() - t0
+            self._translate_times.append(elapsed)
             entry = (ref, source_text, f"\u274c {exc}")
             self._log_entries.append(entry)
             self._append_table_row(*entry)
             self.progress_bar.setValue(self._current_index)
             self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
+            self._update_eta()
             return
+        elapsed = time.monotonic() - t0
+        self._translate_times.append(elapsed)
         self._done += 1
         self._translated_units.append((unit, translated))
         entry = (ref, source_text, translated)
@@ -339,6 +382,7 @@ class BulkTranslateDialog(QDialog):
         self._append_table_row(*entry)
         self.progress_bar.setValue(self._current_index)
         self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
+        self._update_eta()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._timer.stop()

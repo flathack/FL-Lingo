@@ -31,6 +31,35 @@ def test_translation_unit_statuses() -> None:
     assert mod_unit.status == RelocalizationStatus.MOD_ONLY
 
 
+def test_terminology_translation_status() -> None:
+    location = _location()
+    term_unit = TranslationUnit(
+        ResourceKind.STRING,
+        location,
+        "Equipment Dealer",
+        manual_text="Ausrüstungshändler",
+        translation_source="terminology",
+    )
+    manual_unit = TranslationUnit(
+        ResourceKind.STRING,
+        location,
+        "Equipment Dealer",
+        manual_text="Ausrüstungshändler",
+        translation_source="manual",
+    )
+    auto_unit = TranslationUnit(
+        ResourceKind.STRING,
+        location,
+        "Equipment Dealer",
+        manual_text="Ausrüstungshändler",
+        translation_source="auto_translate",
+    )
+
+    assert term_unit.status == RelocalizationStatus.TERMINOLOGY_TRANSLATION
+    assert manual_unit.status == RelocalizationStatus.MANUAL_TRANSLATION
+    assert auto_unit.status == RelocalizationStatus.MANUAL_TRANSLATION
+
+
 def test_translation_unit_normalizes_line_endings_for_status_and_change() -> None:
     location = _location()
     unit = TranslationUnit(

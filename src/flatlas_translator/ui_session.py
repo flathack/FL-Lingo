@@ -53,6 +53,7 @@ class UISessionMixin:
                 target=u.target,
                 target_text=u.target_text,
                 manual_text="",
+                translation_source="",
             )
             for u in catalog.units
         )
@@ -127,6 +128,7 @@ class UISessionMixin:
                     target=unit.target,
                     target_text=unit.target_text,
                     manual_text="" if unit_key in override_reset_keys else unit.manual_text,
+                    translation_source="" if unit_key in override_reset_keys else unit.translation_source,
                 )
             )
         base_catalog = ResourceCatalog(
@@ -740,10 +742,10 @@ class UISessionMixin:
             return 0
         return sum(1 for unit in catalog.units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION)
 
-    def _translation_progress(self) -> tuple[int, int, int, int, int, int]:
+    def _translation_progress(self) -> tuple[int, int, int, int, int, int, int, int]:
         catalog = self._current_catalog()
         if catalog is None:
-            return (0, 0, 0, 0, 0, 0)
+            return (0, 0, 0, 0, 0, 0, 0, 0)
         progress = calculate_translation_progress(catalog)
         return (
             progress.localized,
@@ -752,6 +754,8 @@ class UISessionMixin:
             progress.total,
             progress.done_percent,
             progress.covered_percent,
+            progress.manual,
+            progress.terminology,
         )
 
     def _current_project_signature(self) -> str | None:

@@ -174,8 +174,8 @@ class UIStateMixin:
         if hasattr(self, "en_ref_edit") and hasattr(self, "simple_en_ref_edit"):
             en_ref_path = self.en_ref_edit.text().strip()
             self._mirror_line_edit_text("simple_en_ref_edit", en_ref_path)
-        localized, done, skipped, total, _percent, _covered_percent = self._translation_progress()
-        self.simple_progress_chart.set_progress(total=total, localized=localized, done=done, skipped=skipped)
+        localized, done, skipped, total, _percent, _covered_percent, manual, terminology = self._translation_progress()
+        self.simple_progress_chart.set_progress(total=total, localized=localized, done=done, skipped=skipped, manual=manual, terminology=terminology)
         audio_total, audio_ready, audio_open = self._audio_progress()
         if hasattr(self, "simple_audio_progress_bar"):
             self.simple_audio_progress_bar.setMaximum(max(1, audio_total))
@@ -395,18 +395,20 @@ class UIStateMixin:
         self.dll_plan_table.resizeColumnsToContents()
 
     def _refresh_progress(self) -> None:
-        localized, done, skipped, total, _percent, covered_percent = self._translation_progress()
-        self.translation_progress_bar.set_progress(total=total, localized=localized, done=done, skipped=skipped)
+        localized, done, skipped, total, _percent, covered_percent, manual, terminology = self._translation_progress()
+        self.translation_progress_bar.set_progress(total=total, localized=localized, done=done, skipped=skipped, manual=manual, terminology=terminology)
         if total == 0:
             self.translation_progress_label.setText(self._tr("progress.none"))
         else:
             self.translation_progress_label.setText(
                 self._tr("progress.text").format(
                     percent=covered_percent,
-                    done=done + skipped,
+                    done=done + terminology + skipped,
                     total=total,
                     localized=localized,
-                    available=max(0, done - localized),
+                    available=max(0, done - localized - manual),
+                    manual=manual,
+                    terminology=terminology,
                     skipped=skipped,
                 )
             )

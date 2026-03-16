@@ -18,6 +18,7 @@ class RelocalizationStatus(StrEnum):
     ALREADY_LOCALIZED = "already_localized"
     MOD_ONLY = "mod_only"
     MANUAL_TRANSLATION = "manual_translation"
+    TERMINOLOGY_TRANSLATION = "terminology_translation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +38,7 @@ class TranslationUnit:
     target: ResourceLocation | None = None
     target_text: str = ""
     manual_text: str = ""
+    translation_source: str = ""
 
     @property
     def has_target(self) -> bool:
@@ -54,6 +56,8 @@ class TranslationUnit:
     @property
     def status(self) -> RelocalizationStatus:
         if self.manual_text:
+            if self.translation_source == "terminology":
+                return RelocalizationStatus.TERMINOLOGY_TRANSLATION
             return RelocalizationStatus.MANUAL_TRANSLATION
         if not self.has_target:
             return RelocalizationStatus.MOD_ONLY
@@ -69,6 +73,7 @@ class TranslationUnit:
             "target": _location_to_dict(self.target),
             "target_text": self.target_text,
             "manual_text": self.manual_text,
+            "translation_source": self.translation_source,
             "has_target": self.has_target,
             "is_changed": self.is_changed,
             "status": str(self.status),

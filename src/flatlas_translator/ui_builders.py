@@ -135,6 +135,10 @@ class UIBuildMixin:
         act_export_long_open.triggered.connect(self._export_long_open_exchange)
         file_menu.addAction(act_export_long_open)
 
+        act_export_all_translated = QAction(self._tr("btn.export_all_translated"), self)
+        act_export_all_translated.triggered.connect(self._export_all_translated)
+        file_menu.addAction(act_export_all_translated)
+
         act_import_exchange = QAction(self._tr("btn.import_exchange"), self)
         act_import_exchange.triggered.connect(self._import_translation_exchange)
         file_menu.addAction(act_import_exchange)
@@ -385,6 +389,9 @@ class UIBuildMixin:
         self.remove_imports_button = QPushButton(self._tr("expert.extras.remove_imports"))
         self.remove_imports_button.clicked.connect(self._remove_imported_translations)
         self.remove_imports_button.setToolTip(self._tr("tooltip.remove_imports"))
+        self.export_all_translated_button = QPushButton(self._tr("btn.export_all_translated"))
+        self.export_all_translated_button.clicked.connect(self._export_all_translated)
+        self.export_all_translated_button.setToolTip(self._tr("tooltip.export_all_translated"))
         self.translate_all_open_button = QPushButton(self._tr("btn.translate_all_open"))
         self.translate_all_open_button.clicked.connect(self._translate_all_open_entries)
         self.translate_all_open_button.setToolTip(self._tr("tooltip.translate_all_open"))
@@ -397,6 +404,8 @@ class UIBuildMixin:
         btn_row.addWidget(self.import_exchange_button)
         btn_row.addWidget(self._make_help_button("tooltip.remove_imports"))
         btn_row.addWidget(self.remove_imports_button)
+        btn_row.addWidget(self._make_help_button("tooltip.export_all_translated"))
+        btn_row.addWidget(self.export_all_translated_button)
         btn_row.addWidget(self._make_help_button("tooltip.translate_all_open"))
         btn_row.addWidget(self.translate_all_open_button)
         btn_row.addStretch(1)
@@ -467,6 +476,16 @@ class UIBuildMixin:
             "}"
         )
         layout.addWidget(self.translate_all_button)
+
+        # --- terminology checkbox ---
+        term_row = QHBoxLayout()
+        term_row.addWidget(self._make_help_button("tooltip.include_terminology"))
+        self.include_terminology_check = QCheckBox(self._tr("check.include_terminology"))
+        self.include_terminology_check.setChecked(True)
+        self.include_terminology_check.setToolTip(self._tr("tooltip.include_terminology"))
+        term_row.addWidget(self.include_terminology_check)
+        term_row.addStretch(1)
+        layout.addLayout(term_row)
 
         layout.addWidget(self._build_progress_group())
         layout.addWidget(self._build_apply_execution_group())

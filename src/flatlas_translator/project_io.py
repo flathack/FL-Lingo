@@ -113,6 +113,7 @@ def _unit_from_dict(payload: object) -> TranslationUnit:
         target=_location_from_dict(payload.get("target")),
         target_text=str(payload.get("target_text", "") or ""),
         manual_text=str(payload.get("manual_text", "") or ""),
+        translation_source=str(payload.get("translation_source", "") or ""),
     )
 
 

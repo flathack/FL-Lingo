@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox, QT
 
 from .dll_plans import DllStrategy
 from .mod_overrides import ModOverrideEntry, delete_mod_override, save_mod_override
-from .models import ResourceCatalog, ResourceKind, TranslationUnit
+from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
 from .stats import summarize_catalog
 from .terminology import list_pattern_entries, list_terminology_entries, save_replacement_pattern, save_term_mapping
 from .translation_exchange import update_manual_translation
@@ -348,6 +348,7 @@ class UIEditorMixin:
             dll_name=unit.source.dll_name,
             local_id=unit.source.local_id,
             manual_text=self.target_preview.toPlainText(),
+            translation_source="manual",
         )
         selected_key = self._unit_key(unit)
         self._replace_current_catalog(updated_catalog)
@@ -425,7 +426,11 @@ class UIEditorMixin:
             return
         from .ui_dialogs import BulkTranslateDialog
 
-        open_units = [u for u in catalog.units if u.status.name == "MOD_ONLY" and not u.manual_text]
+        include_terminology = getattr(self, 'include_terminology_check', None)
+        if include_terminology is not None and include_terminology.isChecked():
+            open_units = [u for u in catalog.units if u.status in (RelocalizationStatus.MOD_ONLY, RelocalizationStatus.TERMINOLOGY_TRANSLATION)]
+        else:
+            open_units = [u for u in catalog.units if u.status == RelocalizationStatus.MOD_ONLY]
         if not open_units:
             self._set_status(self._tr("status.translate_all_open_done").format(count=0))
             return
@@ -441,6 +446,7 @@ class UIEditorMixin:
                     dll_name=unit.source.dll_name,
                     local_id=unit.source.local_id,
                     manual_text=text,
+                    translation_source="auto_translate",
                 )
             self._replace_current_catalog(cat)
             self._refresh_table()

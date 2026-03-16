@@ -178,6 +178,7 @@ class TranslatorMainWindow(UIBuildMixin, UIStateMixin, UIEditorMixin, UISessionM
             RelocalizationStatus.AUTO_RELOCALIZE,
             RelocalizationStatus.ALREADY_LOCALIZED,
             RelocalizationStatus.MANUAL_TRANSLATION,
+            RelocalizationStatus.TERMINOLOGY_TRANSLATION,
             RelocalizationStatus.MOD_ONLY,
         ):
             self.status_combo.addItem(self._status_text(status), str(status))

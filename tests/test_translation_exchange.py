@@ -4,6 +4,7 @@ from pathlib import Path
 from flatlas_translator.models import ResourceCatalog, ResourceKind, ResourceLocation, TranslationUnit, make_global_id
 from flatlas_translator.translation_exchange import (
     LONG_TEXT_MIN_LENGTH,
+    export_all_translated,
     export_long_open_exchange,
     export_mod_only_exchange,
     import_exchange,
@@ -143,3 +144,85 @@ def test_update_manual_translation_sets_and_clears_manual_text() -> None:
 
     assert updated.units[0].manual_text == "Neu"
     assert cleared.units[0].manual_text == ""
+
+
+def test_update_manual_translation_sets_translation_source() -> None:
+    catalog = ResourceCatalog(
+        install_dir=Path("C:/source"),
+        freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
+        units=(_unit("Custom text"),),
+    )
+
+    updated = update_manual_translation(
+        catalog,
+        kind="string",
+        dll_name="CustomMod.dll",
+        local_id=5,
+        manual_text="Übersetzt",
+        translation_source="auto_translate",
+    )
+    cleared = update_manual_translation(
+        updated,
+        kind="string",
+        dll_name="CustomMod.dll",
+        local_id=5,
+        manual_text="",
+        translation_source="auto_translate",
+    )
+
+    assert updated.units[0].translation_source == "auto_translate"
+    assert updated.units[0].status.name == "MANUAL_TRANSLATION"
+    assert cleared.units[0].translation_source == ""
+    assert cleared.units[0].status.name == "MOD_ONLY"
+
+
+def test_export_all_translated_exports_translated_entries(tmp_path: Path) -> None:
+    catalog = ResourceCatalog(
+        install_dir=Path("C:/source"),
+        freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
+        units=(
+            _unit("Open text", local_id=1),
+            _unit("Auto text", target_text="Auto Übersetzung", local_id=2, with_target=True),
+            _unit("Manual text", manual_text="Manuelle Übersetzung", local_id=3),
+            _unit("Both", target_text="Ref", manual_text="Manuell", local_id=4, with_target=True),
+        ),
+    )
+    report = export_all_translated(catalog, tmp_path / "all.json")
+    data = json.loads(report.output_path.read_text(encoding="utf-8"))
+
+    assert report.exported_entries == 3
+    assert len(data["entries"]) == 3
+    assert data["entries"][0]["translation_text"] == "Auto Übersetzung"
+    assert data["entries"][1]["translation_text"] == "Manuelle Übersetzung"
+    assert data["entries"][2]["translation_text"] == "Manuell"
+    assert data["metadata"]["type"] == "all-translated"
+
+
+def test_export_all_translated_roundtrips_through_import(tmp_path: Path) -> None:
+    catalog = ResourceCatalog(
+        install_dir=Path("C:/source"),
+        freelancer_ini=Path("C:/source/EXE/freelancer.ini"),
+        units=(
+            _unit("Open text", local_id=1),
+            _unit("Has ref", target_text="Ref Text", local_id=2, with_target=True),
+            _unit("Manual", manual_text="Mein Text", local_id=3),
+        ),
+    )
+    export_path = tmp_path / "all.json"
+    export_all_translated(catalog, export_path)
+
+    # Import into a fresh catalog (same structure, no translations)
+    fresh = ResourceCatalog(
+        install_dir=Path("C:/new"),
+        freelancer_ini=Path("C:/new/EXE/freelancer.ini"),
+        units=(
+            _unit("Open text", local_id=1),
+            _unit("Has ref", local_id=2),
+            _unit("Manual", local_id=3),
+        ),
+    )
+    merged = import_exchange(fresh, export_path)
+
+    assert merged.units[0].manual_text == ""
+    assert merged.units[1].manual_text == "Ref Text"
+    assert merged.units[2].manual_text == "Mein Text"

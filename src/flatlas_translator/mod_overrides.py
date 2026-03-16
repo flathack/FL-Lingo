@@ -118,6 +118,7 @@ def apply_mod_overrides(
                 target=unit.target,
                 target_text=unit.target_text,
                 manual_text=manual_text,
+                translation_source=unit.translation_source,
             )
         )
     return ResourceCatalog(

@@ -49,6 +49,49 @@ def export_long_open_exchange(
     )
 
 
+def export_all_translated(
+    catalog: ResourceCatalog,
+    output_path: Path,
+) -> ExchangeExportReport:
+    """Export every unit that already has a translation (auto, manual, or reference)."""
+    entries: list[dict[str, object]] = []
+    for unit in catalog.units:
+        text = unit.manual_text or unit.target_text
+        if not text or not str(text).strip():
+            continue
+        entries.append(
+            {
+                "kind": str(unit.kind),
+                "dll_name": unit.source.dll_name,
+                "local_id": unit.source.local_id,
+                "global_id": unit.source.global_id,
+                "source_text": unit.source_text,
+                "translation_text": text,
+                "translation_source": unit.translation_source,
+            }
+        )
+    payload = {
+        "format": "flatlas-translator-exchange",
+        "version": 2,
+        "metadata": {
+            "type": "all-translated",
+            "exported_entries": len(entries),
+            "skipped_entries": 0,
+            "glossary_entries": 0,
+        },
+        "glossary": [],
+        "entries": entries,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return ExchangeExportReport(
+        output_path=output_path,
+        exported_entries=len(entries),
+        skipped_entries=0,
+        glossary_entries=0,
+    )
+
+
 def _export_exchange(
     catalog: ResourceCatalog,
     output_path: Path,
@@ -117,6 +160,7 @@ def import_exchange(catalog: ResourceCatalog, input_path: Path) -> ResourceCatal
     merged_units: list[TranslationUnit] = []
     for unit in catalog.units:
         manual_text = translations.get(_unit_key(unit), unit.manual_text)
+        source = "import" if _unit_key(unit) in translations and manual_text != unit.manual_text else unit.translation_source
         merged_units.append(
             TranslationUnit(
                 kind=unit.kind,
@@ -125,6 +169,7 @@ def import_exchange(catalog: ResourceCatalog, input_path: Path) -> ResourceCatal
                 target=unit.target,
                 target_text=unit.target_text,
                 manual_text=manual_text,
+                translation_source=source if manual_text else "",
             )
         )
     return ResourceCatalog(
@@ -141,6 +186,7 @@ def update_manual_translation(
     dll_name: str,
     local_id: int,
     manual_text: str,
+    translation_source: str = "",
 ) -> ResourceCatalog:
     normalized_manual_text = str(manual_text or "").replace("\r\n", "\n")
     merged_units: list[TranslationUnit] = []
@@ -154,6 +200,7 @@ def update_manual_translation(
                     target=unit.target,
                     target_text=unit.target_text,
                     manual_text=normalized_manual_text,
+                    translation_source=translation_source if normalized_manual_text else "",
                 )
             )
             continue

@@ -14,14 +14,18 @@ class SegmentedProgressBar(QWidget):
         self._localized = 0
         self._done = 0
         self._skipped = 0
+        self._manual = 0
+        self._terminology = 0
         self._segments = 20
         self.setMinimumHeight(24)
 
-    def set_progress(self, *, total: int, localized: int, done: int, skipped: int) -> None:
+    def set_progress(self, *, total: int, localized: int, done: int, skipped: int, manual: int = 0, terminology: int = 0) -> None:
         self._total = max(0, int(total))
         self._localized = max(0, int(localized))
         self._done = max(0, int(done))
         self._skipped = max(0, int(skipped))
+        self._manual = max(0, int(manual))
+        self._terminology = max(0, int(terminology))
         self.update()
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
@@ -35,8 +39,10 @@ class SegmentedProgressBar(QWidget):
         painter.fillRect(rect, QColor("#d8d8d8"))
         total = self._total if self._total > 0 else 1
         localized_ratio = min(1.0, self._localized / total)
-        covered_ratio = min(1.0, (self._done + self._skipped) / total)
-        done_ratio = min(covered_ratio, self._done / total)
+        auto_ratio = min(1.0, (self._done - self._manual) / total)
+        done_ratio = min(1.0, self._done / total)
+        terminology_ratio = min(1.0, (self._done + self._terminology) / total)
+        covered_ratio = min(1.0, (self._done + self._terminology + self._skipped) / total)
         segment_gap = 2
         segment_width = max(4, int((rect.width() - ((self._segments - 1) * segment_gap)) / self._segments))
         for index in range(self._segments):
@@ -46,8 +52,12 @@ class SegmentedProgressBar(QWidget):
             segment_end = (index + 1) / self._segments
             if segment_end <= localized_ratio:
                 color = QColor("#A855F7")
-            elif segment_end <= done_ratio:
+            elif segment_end <= auto_ratio:
                 color = QColor("#4CAF50")
+            elif segment_end <= done_ratio:
+                color = QColor("#42A5F5")
+            elif segment_end <= terminology_ratio:
+                color = QColor("#26C6DA")
             elif segment_end <= covered_ratio:
                 color = QColor("#E3B341")
             else:
@@ -65,13 +75,17 @@ class CircularProgressChart(QWidget):
         self._localized = 0
         self._done = 0
         self._skipped = 0
+        self._manual = 0
+        self._terminology = 0
         self.setMinimumSize(180, 180)
 
-    def set_progress(self, *, total: int, localized: int, done: int, skipped: int) -> None:
+    def set_progress(self, *, total: int, localized: int, done: int, skipped: int, manual: int = 0, terminology: int = 0) -> None:
         self._total = max(0, int(total))
         self._localized = max(0, int(localized))
         self._done = max(0, int(done))
         self._skipped = max(0, int(skipped))
+        self._manual = max(0, int(manual))
+        self._terminology = max(0, int(terminology))
         self.update()
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
@@ -90,11 +104,13 @@ class CircularProgressChart(QWidget):
             -((rect.height() - size) // 2),
         )
         total = self._total if self._total > 0 else 1
-        available = max(0, self._done - self._localized)
-        open_count = max(0, total - self._done - self._skipped)
+        auto = max(0, self._done - self._localized - self._manual)
+        open_count = max(0, total - self._done - self._terminology - self._skipped)
         segments = [
             (self._localized, QColor("#A855F7")),
-            (available, QColor("#4CAF50")),
+            (auto, QColor("#4CAF50")),
+            (self._manual, QColor("#42A5F5")),
+            (self._terminology, QColor("#26C6DA")),
             (self._skipped, QColor("#E3B341")),
             (open_count, QColor("#C7CCD4")),
         ]

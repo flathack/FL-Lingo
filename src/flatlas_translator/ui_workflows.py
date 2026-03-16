@@ -843,8 +843,12 @@ class UIWorkflowMixin:
         progress.setAutoClose(True)
         progress.setAutoReset(True)
         progress.show()
+        if hasattr(self, "global_progress_bar"):
+            self.global_progress_bar.setVisible(True)
         QApplication.processEvents()
         try:
             return callback()
         finally:
             progress.close()
+            if hasattr(self, "global_progress_bar"):
+                self.global_progress_bar.setVisible(False)

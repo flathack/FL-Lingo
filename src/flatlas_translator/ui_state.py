@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QComboBox, QLineEdit, QTableWidgetItem
 
 from .dll_plans import DllStrategy
-from .models import ResourceCatalog
+from .models import RelocalizationStatus, ResourceCatalog
 from .path_utils import ci_find
 from .stats import summarize_catalog
 from .terminology import clear_term_map_cache
@@ -304,11 +304,22 @@ class UIStateMixin:
             self.export_long_open_button.setEnabled(has_catalog)
             self.import_exchange_button.setEnabled(has_catalog)
             self.remove_imports_button.setEnabled(has_catalog)
+            self.translate_all_open_button.setEnabled(has_catalog)
             self.copy_audio_button.setEnabled(can_audio)
             self.merge_utf_button.setEnabled(can_audio)
             self.apply_button.setEnabled(can_apply)
             self.apply_button.setToolTip(apply_tooltip)
         if hasattr(self, "translate_all_button"):
+            catalog = self._current_catalog()
+            apply_count = sum(
+                1 for u in catalog.units
+                if u.status in {RelocalizationStatus.AUTO_RELOCALIZE, RelocalizationStatus.MANUAL_TRANSLATION}
+            ) if catalog is not None else 0
+            self.translate_all_button.setText(
+                self._tr("btn.translate_all_count").format(count=apply_count)
+                if apply_count
+                else self._tr("btn.translate_all")
+            )
             self.translate_all_button.setEnabled(can_apply)
             self.translate_all_button.setToolTip(apply_tooltip)
         if hasattr(self, "editing_section_group"):

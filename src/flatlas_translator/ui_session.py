@@ -542,6 +542,8 @@ class UISessionMixin:
         self._source_lang_code = saved_source_language
         self._target_lang_code = saved_target_language
         self._startup_last_project_path = Path(saved_project_path) if saved_project_path else None
+        self._translator_api_key = str(self._settings.value("translator/api_key", "") or "").strip()
+        self._translator_provider = str(self._settings.value("translator/provider", "google") or "google").strip()
 
     def _save_persistent_settings(self) -> None:
         self._settings.setValue("ui/language", self._lang)

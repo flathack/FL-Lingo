@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QInputDialog, QMenu, QTableWidgetItem, QTextEdit
+from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox, QTableWidgetItem, QTextEdit
 
 from .dll_plans import DllStrategy
 from .mod_overrides import ModOverrideEntry, delete_mod_override, save_mod_override
@@ -373,3 +373,110 @@ class UIEditorMixin:
         self._refresh_table()
         self._select_unit_by_key(selected_key)
         self._set_status(self._tr("status.manual_reset"))
+
+    # ---- External translator integration ----
+
+    def _translate_selected_entry(self) -> None:
+        """Translate the currently selected source text and write it into the target preview."""
+        unit = self._selected_unit()
+        catalog = self._current_catalog()
+        if unit is None or catalog is None:
+            self._show_error(self._tr("error.select_entry"))
+            return
+        source_text = unit.source_text
+        if not source_text.strip():
+            return
+        try:
+            from .translator_service import translate_text
+        except ImportError:
+            self._show_error(self._tr("error.translate_not_available"))
+            return
+        source_lang = self._source_lang_code
+        target_lang = self._target_lang_code
+        self.translator_progress_bar.setMaximum(0)
+        self.translator_progress_bar.setVisible(True)
+        if hasattr(self, "global_progress_bar"):
+            self.global_progress_bar.setVisible(True)
+        QApplication.processEvents()
+        try:
+            translated = translate_text(source_text, source_lang, target_lang)
+        except Exception as exc:
+            self.translator_progress_bar.setVisible(False)
+            if hasattr(self, "global_progress_bar"):
+                self.global_progress_bar.setVisible(False)
+            self._set_status(self._tr("status.translate_entry_failed").format(error=exc))
+            return
+        self.translator_progress_bar.setVisible(False)
+        if hasattr(self, "global_progress_bar"):
+            self.global_progress_bar.setVisible(False)
+        self.target_preview.setPlainText(translated)
+        self._set_status(self._tr("status.translate_entry_done"))
+
+    def _translate_all_open_entries(self) -> None:
+        """Open bulk-translate dialog for all open entries."""
+        catalog = self._current_catalog()
+        if catalog is None:
+            self._show_error(self._tr("error.load_first"))
+            return
+        try:
+            from .translator_service import translate_text
+        except ImportError:
+            self._show_error(self._tr("error.translate_not_available"))
+            return
+        from .ui_dialogs import BulkTranslateDialog
+
+        open_units = [u for u in catalog.units if u.status.name == "MOD_ONLY" and not u.manual_text]
+        if not open_units:
+            self._set_status(self._tr("status.translate_all_open_done").format(count=0))
+            return
+
+        def save_progress(translated_pairs: list) -> None:
+            cat = self._current_catalog()
+            if cat is None:
+                return
+            for unit, text in translated_pairs:
+                cat = update_manual_translation(
+                    cat,
+                    kind=str(unit.kind),
+                    dll_name=unit.source.dll_name,
+                    local_id=unit.source.local_id,
+                    manual_text=text,
+                )
+            self._replace_current_catalog(cat)
+            self._refresh_table()
+            self._update_action_state()
+            self._save_project_file()
+
+        prev_log = getattr(self, "_bulk_translate_log", None) or []
+        dlg = BulkTranslateDialog(
+            total_open=len(open_units),
+            tr=self._tr,
+            translate_fn=translate_text,
+            source_lang=self._source_lang_code,
+            target_lang=self._target_lang_code,
+            units=open_units,
+            save_progress_fn=save_progress,
+            log_entries=prev_log,
+            parent=self,
+        )
+        dlg.exec()
+        self._bulk_translate_log = dlg.log_entries
+        self._set_status(self._tr("status.translate_all_open_done").format(count=dlg._done))
+
+    def _open_translator_settings(self) -> None:
+        """Show dialog for translator provider selection and API key."""
+        from .ui_dialogs import TranslatorSettingsDialog
+
+        current_key = getattr(self, "_translator_api_key", "") or ""
+        current_provider = getattr(self, "_translator_provider", "google") or "google"
+        dlg = TranslatorSettingsDialog(
+            current_provider=current_provider,
+            current_api_key=current_key,
+            tr=self._tr,
+            parent=self,
+        )
+        if dlg.exec():
+            self._translator_api_key = dlg.selected_api_key
+            self._translator_provider = dlg.selected_provider
+            self._settings.setValue("translator/api_key", self._translator_api_key)
+            self._settings.setValue("translator/provider", self._translator_provider)

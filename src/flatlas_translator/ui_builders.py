@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QStatusBar,
+    QStyle,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -53,6 +54,14 @@ class UIBuildMixin:
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
+
+        self.global_progress_bar = QProgressBar()
+        self.global_progress_bar.setMinimum(0)
+        self.global_progress_bar.setMaximum(0)
+        self.global_progress_bar.setTextVisible(False)
+        self.global_progress_bar.setFixedHeight(4)
+        self.global_progress_bar.setVisible(False)
+        layout.addWidget(self.global_progress_bar)
 
         layout.addWidget(self._build_main_navigation(), 1)
         layout.addWidget(self._build_footer())
@@ -168,6 +177,10 @@ class UIBuildMixin:
         act_toolchain.setEnabled(windows_only)
         settings_menu.addAction(act_toolchain)
 
+        act_translator_settings = QAction(self._tr("menuitem.translator_settings"), self)
+        act_translator_settings.triggered.connect(self._open_translator_settings)
+        settings_menu.addAction(act_translator_settings)
+
         self._language_actions: dict[str, QAction] = {}
         for code, label in LANGUAGE_OPTIONS:
             act_language = QAction(f"{code} - {label}", self)
@@ -190,13 +203,15 @@ class UIBuildMixin:
         help_menu.addAction(act_about)
 
     def _make_help_button(self, help_key: str) -> QPushButton:
-        """Create a small (?) button that shows help text on hover and click."""
-        btn = QPushButton("(?)")
-        btn.setFixedSize(28, 28)
+        """Create a small help-icon button that shows help text on hover and click."""
+        btn = QPushButton()
+        style = self.style()
+        if style is not None:
+            btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_TitleBarContextHelpButton))
+        btn.setFixedSize(22, 22)
         btn.setStyleSheet(
-            "QPushButton { font-size: 11px; font-weight: bold; border: 1px solid #8b95a7; "
-            "border-radius: 14px; color: #8b95a7; background: transparent; padding: 0; }"
-            "QPushButton:hover { background: #364152; color: #e2e8f0; }"
+            "QPushButton { border: none; background: transparent; padding: 0; }"
+            "QPushButton:hover { background: #364152; border-radius: 11px; }"
         )
         help_text = self._tr(help_key)
         btn.setToolTip(help_text)
@@ -370,6 +385,9 @@ class UIBuildMixin:
         self.remove_imports_button = QPushButton(self._tr("expert.extras.remove_imports"))
         self.remove_imports_button.clicked.connect(self._remove_imported_translations)
         self.remove_imports_button.setToolTip(self._tr("tooltip.remove_imports"))
+        self.translate_all_open_button = QPushButton(self._tr("btn.translate_all_open"))
+        self.translate_all_open_button.clicked.connect(self._translate_all_open_entries)
+        self.translate_all_open_button.setToolTip(self._tr("tooltip.translate_all_open"))
 
         btn_row.addWidget(self._make_help_button("tooltip.export_mod_only"))
         btn_row.addWidget(self.export_mod_only_button)
@@ -379,6 +397,8 @@ class UIBuildMixin:
         btn_row.addWidget(self.import_exchange_button)
         btn_row.addWidget(self._make_help_button("tooltip.remove_imports"))
         btn_row.addWidget(self.remove_imports_button)
+        btn_row.addWidget(self._make_help_button("tooltip.translate_all_open"))
+        btn_row.addWidget(self.translate_all_open_button)
         btn_row.addStretch(1)
         layout.addLayout(btn_row)
 
@@ -971,12 +991,25 @@ class UIBuildMixin:
         self.save_edit_button.clicked.connect(self._save_manual_edit)
         self.reset_edit_button = QPushButton(self._tr("btn.reset_edit"))
         self.reset_edit_button.clicked.connect(self._reset_manual_edit)
+        self.translate_entry_button = QPushButton(self._tr("btn.translate_entry"))
+        self.translate_entry_button.clicked.connect(self._translate_selected_entry)
+        self.translate_entry_button.setToolTip(self._tr("tooltip.translate_entry"))
         edit_actions.addStretch(1)
+        edit_actions.addWidget(self.translate_entry_button)
         edit_actions.addWidget(self.reset_edit_button)
         edit_actions.addWidget(self.save_edit_button)
         target_layout.addLayout(edit_actions)
 
         right_layout.addWidget(source_box, 1)
+
+        self.translator_progress_bar = QProgressBar()
+        self.translator_progress_bar.setMinimum(0)
+        self.translator_progress_bar.setMaximum(0)
+        self.translator_progress_bar.setTextVisible(False)
+        self.translator_progress_bar.setFixedHeight(6)
+        self.translator_progress_bar.setVisible(False)
+        right_layout.addWidget(self.translator_progress_bar)
+
         right_layout.addWidget(target_box, 1)
 
         toolchain_state = self._tr("toolchain.available") if self._writer.has_toolchain() else self._tr("toolchain.unavailable")

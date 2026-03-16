@@ -98,6 +98,8 @@ class UIChromeMixin:
         self.dll_legend_label.setText(self._tr("dll.legend"))
         self.save_edit_button.setText(self._tr("btn.save_edit"))
         self.reset_edit_button.setText(self._tr("btn.reset_edit"))
+        self.translate_entry_button.setText(self._tr("btn.translate_entry"))
+        self.translate_all_open_button.setText(self._tr("btn.translate_all_open"))
         self.root_tabs.setTabText(0, self._tr("tab.start"))
         self.root_tabs.setTabText(1, self._tr("tab.workspace"))
         self.editor_tabs.setTabText(0, self._tr("tab.editor"))

@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 from .catalog import pair_catalogs
 from .dll_plans import DllStrategy, build_dll_plans
 from .exporters import export_catalog_json
+from .localization import LANGUAGE_OPTIONS, resolve_languages_dir
 from .mod_overrides import apply_mod_overrides
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
 from .project_io import PROJECT_FILE_EXTENSION, load_project, project_signature, save_project
@@ -717,6 +718,112 @@ class UIWorkflowMixin:
         self._save_persistent_settings()
         self._retranslate_ui()
         self._set_status(self._tr("status.language_changed"))
+        self._offer_ui_auto_translate(new_lang)
+
+    # ---- UI auto-translation -------------------------------------------------
+
+    _UI_TRANSLATE_THRESHOLD = 100  # strings needed to count as "translated"
+
+    def _has_real_translation(self, lang: str) -> bool:
+        """Return True if *lang* has significantly more strings than the EN fallback."""
+        from .ui_strings import STRINGS
+        en = STRINGS.get("en", {})
+        current = STRINGS.get(lang, {})
+        diff = sum(1 for k, v in current.items() if en.get(k) != v)
+        return diff >= self._UI_TRANSLATE_THRESHOLD
+
+    def _offer_ui_auto_translate(self, lang: str) -> None:
+        """If *lang* has no real translation, ask the user and translate via Google."""
+        if lang == "en":
+            return
+        if self._has_real_translation(lang):
+            return
+        label = lang
+        for code, name in LANGUAGE_OPTIONS:
+            if code == lang:
+                label = name
+                break
+        reply = QMessageBox.question(
+            self,
+            self._tr("dialog.auto_ui_translate_title"),
+            self._tr("dialog.auto_ui_translate_body").format(language=label),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._run_ui_auto_translate(lang)
+
+    def _run_ui_auto_translate(self, target_lang: str) -> None:
+        """Translate all EN UI strings into *target_lang* using GoogleTranslator."""
+        from .ui_strings import STRINGS
+        from .translator_service import translate_text
+
+        en_strings = STRINGS.get("en", {})
+        keys = list(en_strings.keys())
+        total = len(keys)
+        if total == 0:
+            return
+
+        progress = QProgressDialog(
+            self._tr("dialog.auto_ui_progress").format(done=0, total=total),
+            self._tr("btn.cancel"),
+            0,
+            total,
+            self,
+        )
+        progress.setWindowTitle(self._tr("dialog.auto_ui_translate_title"))
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+
+        translated: dict[str, str] = {}
+        errors = 0
+        for i, key in enumerate(keys):
+            if progress.wasCanceled():
+                break
+            source_text = en_strings[key]
+            if not source_text.strip():
+                translated[key] = source_text
+            else:
+                try:
+                    translated[key] = translate_text(source_text, "en", target_lang)
+                except Exception:
+                    translated[key] = source_text
+                    errors += 1
+            progress.setValue(i + 1)
+            progress.setLabelText(
+                self._tr("dialog.auto_ui_progress").format(done=i + 1, total=total)
+            )
+            QApplication.processEvents()
+
+        progress.close()
+
+        if not translated:
+            return
+
+        # Merge into STRINGS
+        if target_lang not in STRINGS:
+            STRINGS[target_lang] = dict(en_strings)
+        STRINGS[target_lang].update(translated)
+
+        # Persist to Languages/ dir
+        try:
+            lang_dir = resolve_languages_dir()
+            lang_dir.mkdir(parents=True, exist_ok=True)
+            out_file = lang_dir / f"ui.{target_lang}.json"
+            out_file.write_text(
+                json.dumps(translated, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass  # non-critical, strings are in memory already
+
+        self._retranslate_ui()
+        status = self._tr("status.ui_auto_translated").format(
+            count=len(translated), errors=errors
+        )
+        self._set_status(status)
 
     @staticmethod
     def _normalize_version_tuple(version_text: str) -> tuple[int, ...]:

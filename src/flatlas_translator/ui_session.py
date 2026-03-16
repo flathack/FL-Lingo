@@ -396,11 +396,6 @@ class UISessionMixin:
             if audio_candidates:
                 auto_copy_audio = (
                     getattr(self, "_auto_translate_all", False)
-                    or (
-                        hasattr(self, "simple_audio_copy_check")
-                        and self._ui_mode == "simple"
-                        and self.simple_audio_copy_check.isChecked()
-                    )
                 )
                 if auto_copy_audio:
                     self._copy_reference_audio_candidates(
@@ -444,11 +439,6 @@ class UISessionMixin:
                         if utf_candidates:
                             auto_merge = (
                                 getattr(self, "_auto_translate_all", False)
-                                or (
-                                    hasattr(self, "simple_audio_copy_check")
-                                    and self._ui_mode == "simple"
-                                    and self.simple_audio_copy_check.isChecked()
-                                )
                             )
                             if auto_merge:
                                 utf_report = self._run_with_progress(
@@ -668,6 +658,51 @@ class UISessionMixin:
         self._saved_project_signature = None
         self._update_action_state()
         self._set_status(self._tr("status.loaded_compare").format(path=target_dir))
+
+    def _load_source_only_as_paired(self) -> None:
+        """Load only the source installation and treat all entries as MOD_ONLY (no reference needed)."""
+        if self._source_catalog is None:
+            self._load_source_catalog()
+            if self._source_catalog is None:
+                return
+
+        self._store_language_pair()
+        # Build a paired catalog where every entry has no target reference
+        paired_units = tuple(
+            TranslationUnit(
+                kind=u.kind,
+                source=u.source,
+                source_text=u.source_text,
+                target=None,
+                target_text="",
+                manual_text=u.manual_text,
+                translation_source=u.translation_source,
+            )
+            for u in self._source_catalog.units
+        )
+        self._target_catalog = None
+        self._paired_catalog = apply_mod_overrides(
+            apply_known_term_suggestions(
+                ResourceCatalog(
+                    install_dir=self._source_catalog.install_dir,
+                    freelancer_ini=self._source_catalog.freelancer_ini,
+                    units=paired_units,
+                ),
+                target_language=self._target_lang_code,
+            )
+        )
+        self._dll_plans = build_dll_plans(self._source_catalog, self._paired_catalog, self._source_catalog)
+
+        self._invalidate_audio_progress_cache()
+        self._apply_editor_default_filters(force=True)
+        self._refresh_mod_override_entries()
+        self._refresh_old_text_backup_options()
+        self._refresh_dll_plan_table()
+        self._populate_dll_filter(self._paired_catalog)
+        self._refresh_table()
+        self._saved_project_signature = None
+        self._update_action_state()
+        self._set_status(self._tr("status.loaded_source").format(path=self._source_catalog.install_dir))
 
     def _current_catalog(self) -> ResourceCatalog | None:
         return self._paired_catalog or self._source_catalog

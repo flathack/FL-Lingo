@@ -41,15 +41,28 @@ class UIStateMixin:
             text = edit.text().strip()
             edit.setToolTip(self._tr("validate.ok") if text else "")
 
+    def _is_no_reference_mode(self) -> bool:
+        """Return True if the user has selected no-reference mode (simple mode always, or expert with checkbox)."""
+        if self._ui_mode == "simple":
+            return True
+        return hasattr(self, "no_reference_check") and self.no_reference_check.isChecked()
+
     def _validate_and_style_paths(self) -> bool:
-        """Validate all path fields, apply styling, return True if source+target are valid."""
+        """Validate all path fields, apply styling, return True if paths are valid for scanning."""
         source_err = self._validate_install_path(self.source_edit.text().strip())
-        target_err = self._validate_install_path(self.target_edit.text().strip())
         self._style_path_field(self.source_edit, source_err)
-        self._style_path_field(self.target_edit, target_err)
         if hasattr(self, "simple_source_edit"):
             self._style_path_field(self.simple_source_edit, source_err)
-        if hasattr(self, "simple_target_edit"):
+
+        no_ref = self._is_no_reference_mode()
+
+        if no_ref:
+            # In no-reference mode, only source must be valid
+            target_err = None
+        else:
+            target_err = self._validate_install_path(self.target_edit.text().strip())
+        self._style_path_field(self.target_edit, target_err)
+        if hasattr(self, "simple_target_edit") and self.simple_target_edit.isVisible():
             self._style_path_field(self.simple_target_edit, target_err)
         # en_ref is optional
         en_ref_text = ""
@@ -58,15 +71,48 @@ class UIStateMixin:
         en_ref_err = self._validate_install_path(en_ref_text) if en_ref_text else None
         if hasattr(self, "en_ref_edit"):
             self._style_path_field(self.en_ref_edit, en_ref_err)
-        if hasattr(self, "simple_en_ref_edit"):
+        if hasattr(self, "simple_en_ref_edit") and self.simple_en_ref_edit.isVisible():
             self._style_path_field(self.simple_en_ref_edit, en_ref_err)
         source_ok = bool(self.source_edit.text().strip()) and source_err is None
+        if no_ref:
+            return source_ok
         target_ok = bool(self.target_edit.text().strip()) and target_err is None
         return source_ok and target_ok
 
     def _handle_install_path_change(self, _value: str = "") -> None:
         self._invalidate_audio_progress_cache()
         self._update_action_state()
+
+    def _on_no_reference_toggled(self, state: int) -> None:
+        """Show/hide reference install fields based on no-reference checkbox."""
+        no_ref = bool(state)
+        if hasattr(self, "target_install_label"):
+            self.target_install_label.setVisible(not no_ref)
+        if hasattr(self, "target_edit"):
+            self.target_edit.setVisible(not no_ref)
+        if hasattr(self, "browse_target_button"):
+            self.browse_target_button.setVisible(not no_ref)
+        if hasattr(self, "en_ref_install_label"):
+            self.en_ref_install_label.setVisible(not no_ref)
+        if hasattr(self, "en_ref_edit"):
+            self.en_ref_edit.setVisible(not no_ref)
+        if hasattr(self, "browse_en_ref_button"):
+            self.browse_en_ref_button.setVisible(not no_ref)
+        self._update_action_state()
+
+    def _sync_simple_language_to_expert(self) -> None:
+        """Sync language combos from simple mode to expert mode."""
+        if hasattr(self, "simple_source_lang_combo"):
+            code = self.simple_source_lang_combo.currentData()
+            if code:
+                self._source_lang_code = code
+                self._set_language_combo_value(self.source_lang_edit, code)
+        if hasattr(self, "simple_target_lang_combo"):
+            code = self.simple_target_lang_combo.currentData()
+            if code:
+                self._target_lang_code = code
+                self._set_language_combo_value(self.target_lang_edit, code)
+        self._store_language_pair()
 
     def _invalidate_audio_progress_cache(self) -> None:
         self._audio_progress_cache_key = None
@@ -122,14 +168,15 @@ class UIStateMixin:
         return result
 
     def _apply_ui_mode(self, *, save: bool = True) -> None:
-        if hasattr(self, "simple_mode_button"):
-            self.simple_mode_button.setChecked(self._ui_mode == "simple")
-        if hasattr(self, "expert_mode_button"):
-            self.expert_mode_button.setChecked(self._ui_mode == "expert")
-        if hasattr(self, "main_mode_stack"):
-            self.main_mode_stack.setCurrentIndex(0 if self._ui_mode == "simple" else 1)
+        if hasattr(self, "main_mode_tabs"):
+            self.main_mode_tabs.setCurrentIndex(0 if self._ui_mode == "simple" else 1)
         if save:
             self._save_persistent_settings()
+        self._refresh_simple_mode()
+
+    def _on_mode_tab_changed(self, index: int) -> None:
+        self._ui_mode = "simple" if index == 0 else "expert"
+        self._save_persistent_settings()
         self._refresh_simple_mode()
 
     def _set_ui_mode(self, mode: str, *, save: bool = True) -> None:
@@ -141,10 +188,14 @@ class UIStateMixin:
         self._apply_ui_mode(save=save)
 
     def _run_simple_scan(self) -> None:
-        self._load_compare_catalog()
+        self._sync_simple_language_to_expert()
+        self._load_source_only_as_paired()
 
     def _run_expert_scan(self) -> None:
-        self._load_compare_catalog()
+        if hasattr(self, "no_reference_check") and self.no_reference_check.isChecked():
+            self._load_source_only_as_paired()
+        else:
+            self._load_compare_catalog()
 
     def _refresh_expert_scan_summary(self) -> None:
         if not hasattr(self, "expert_scan_summary_label"):
@@ -177,22 +228,6 @@ class UIStateMixin:
         localized, done, skipped, total, _percent, _covered_percent, manual, terminology = self._translation_progress()
         self.simple_progress_chart.set_progress(total=total, localized=localized, done=done, skipped=skipped, manual=manual, terminology=terminology)
         audio_total, audio_ready, audio_open = self._audio_progress()
-        if hasattr(self, "simple_audio_progress_bar"):
-            self.simple_audio_progress_bar.setMaximum(max(1, audio_total))
-            self.simple_audio_progress_bar.setValue(audio_ready if audio_total else 0)
-        if hasattr(self, "simple_audio_progress_label"):
-            if audio_total == 0:
-                self.simple_audio_progress_label.setText(self._tr("progress.audio.none"))
-            else:
-                self.simple_audio_progress_label.setText(
-                    self._tr("progress.audio.text").format(
-                        percent=round((audio_ready / audio_total) * 100),
-                        ready=audio_ready,
-                        total=audio_total,
-                        open=audio_open,
-                    )
-                )
-
         utf_files, utf_total, utf_de, utf_repl, utf_mod = self._utf_audio_progress()
         if hasattr(self, "simple_utf_progress_bar"):
             self.simple_utf_progress_bar.setMaximum(max(1, utf_total))
@@ -227,7 +262,7 @@ class UIStateMixin:
         elif self._source_catalog is not None:
             self.simple_scan_summary_label.setText(self._tr("simple.summary.source_loaded"))
         else:
-            self.simple_scan_summary_label.setText(self._tr("simple.summary.idle"))
+            self.simple_scan_summary_label.setText(self._tr("simple.summary.idle.no_ref"))
 
         if self._paired_catalog is not None:
             apply_units = self._apply_candidate_units()
@@ -292,7 +327,7 @@ class UIStateMixin:
         can_apply = has_comparison and has_toolchain and not self._apply_active
         paths_valid = self._validate_and_style_paths()
         can_simple_scan = paths_valid and not self._apply_active
-        can_audio = paths_valid and not self._apply_active
+        can_audio = paths_valid and not self._apply_active and not self._is_no_reference_mode()
         apply_tooltip = ""
         if not has_comparison:
             apply_tooltip = self._tr("tooltip.apply_disabled_compare")
@@ -343,8 +378,8 @@ class UIStateMixin:
         if hasattr(self, "simple_translate_button"):
             self.simple_translate_button.setEnabled(can_apply)
             self.simple_translate_button.setToolTip(apply_tooltip)
-        if hasattr(self, "simple_audio_copy_check"):
-            self.simple_audio_copy_check.setEnabled(can_audio)
+        if hasattr(self, "simple_auto_translate_button"):
+            self.simple_auto_translate_button.setEnabled(has_catalog and not self._apply_active)
         self._refresh_simple_mode()
 
     def _populate_dll_filter(self, catalog: ResourceCatalog | None) -> None:

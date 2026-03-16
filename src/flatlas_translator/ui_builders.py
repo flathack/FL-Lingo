@@ -234,6 +234,17 @@ class UIBuildMixin:
         help_row.addWidget(prep_help_label, 1)
         layout.addLayout(help_row)
 
+        # --- no-reference checkbox ---
+        no_ref_row = QHBoxLayout()
+        self.no_reference_check = QCheckBox(self._tr("check.no_reference"))
+        self.no_reference_check.setChecked(False)
+        self.no_reference_check.setToolTip(self._tr("tooltip.no_reference"))
+        self.no_reference_check.stateChanged.connect(self._on_no_reference_toggled)
+        no_ref_row.addWidget(self._make_help_button("tooltip.no_reference"))
+        no_ref_row.addWidget(self.no_reference_check)
+        no_ref_row.addStretch(1)
+        layout.addLayout(no_ref_row)
+
         toolchain_row = QHBoxLayout()
         self.toolchain_button = QPushButton(self._tr("btn.install_toolchain"))
         self.toolchain_button.clicked.connect(self._install_toolchain)
@@ -520,33 +531,24 @@ class UIBuildMixin:
         return self.dll_group
 
     def _build_main_navigation(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        mode_row = QHBoxLayout()
-        self.mode_switch_label = QLabel(f"{self._tr('mode.simple')} / {self._tr('mode.expert')}")
-        self.mode_switch_label.setStyleSheet("color: #8b95a7;")
-        mode_row.addWidget(self.mode_switch_label)
-        self.simple_mode_button = QPushButton(self._tr("mode.simple"))
-        self.simple_mode_button.setCheckable(True)
-        self.simple_mode_button.clicked.connect(lambda checked=False: self._set_ui_mode("simple"))
-        self.expert_mode_button = QPushButton(self._tr("mode.expert"))
-        self.expert_mode_button.setCheckable(True)
-        self.expert_mode_button.clicked.connect(lambda checked=False: self._set_ui_mode("expert"))
-        mode_row.addWidget(self.simple_mode_button)
-        mode_row.addWidget(self.expert_mode_button)
-        mode_row.addStretch(1)
-        layout.addLayout(mode_row)
+        self.main_mode_tabs = QTabWidget()
+        self.main_mode_tabs.setDocumentMode(True)
+        self.main_mode_tabs.tabBar().setExpanding(True)
+        self.main_mode_tabs.addTab(self._build_simple_mode_page(), self._tr("mode.simple"))
 
-        self.main_mode_stack = QStackedWidget()
-        self.main_mode_stack.addWidget(self._build_simple_mode_page())
+        expert_container = QWidget()
+        expert_layout = QVBoxLayout(expert_container)
+        expert_layout.setContentsMargins(0, 0, 0, 0)
         self.root_tabs = QTabWidget()
         self.root_tabs.addTab(self._build_start_page(), self._tr("tab.start"))
         self.root_tabs.addTab(self._build_editor_workspace_page(), self._tr("tab.workspace"))
         self.root_tabs.addTab(self._build_troubleshoot_page(), self._tr("tab.troubleshoot"))
-        self.main_mode_stack.addWidget(self.root_tabs)
-        layout.addWidget(self.main_mode_stack, 1)
+        expert_layout.addWidget(self.root_tabs)
+        self.main_mode_tabs.addTab(expert_container, self._tr("mode.expert"))
+
+        self.main_mode_tabs.currentChanged.connect(self._on_mode_tab_changed)
         self._apply_ui_mode(save=False)
-        return page
+        return self.main_mode_tabs
 
     def _build_simple_mode_page(self) -> QWidget:
         page = QWidget()
@@ -557,7 +559,7 @@ class UIBuildMixin:
         paths_layout = QVBoxLayout(self.simple_paths_group)
         paths_layout.setContentsMargins(12, 14, 12, 12)
         paths_layout.setSpacing(10)
-        self.simple_paths_help_label = QLabel(self._tr("simple.paths.help"))
+        self.simple_paths_help_label = QLabel(self._tr("simple.paths.help.no_ref"))
         self.simple_paths_help_label.setWordWrap(True)
         self.simple_paths_help_label.setStyleSheet("color: #8b95a7;")
         self.simple_paths_help_label.setMinimumHeight(52)
@@ -570,52 +572,51 @@ class UIBuildMixin:
         self.simple_source_browse_button = QPushButton(self._tr("btn.browse"))
         self.simple_source_browse_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.simple_source_browse_button.clicked.connect(lambda: self._pick_directory(self.simple_source_edit))
-        self.simple_target_label = QLabel(self._tr("simple.label.reference_install"))
+
+        # Hidden fields for mirroring (needed by expert mode sync)
         self.simple_target_edit = QLineEdit()
-        self.simple_target_edit.setPlaceholderText(self._default_install_path_hint("target"))
-        self.simple_target_edit.setClearButtonEnabled(True)
+        self.simple_target_edit.setVisible(False)
         self.simple_target_edit.textChanged.connect(lambda value: self._mirror_line_edit_text("target_edit", value))
-        self.simple_target_edit.textChanged.connect(self._handle_install_path_change)
-        self.simple_target_browse_button = QPushButton(self._tr("btn.browse"))
-        self.simple_target_browse_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.simple_target_browse_button.clicked.connect(lambda: self._pick_directory(self.simple_target_edit))
-        self.simple_en_ref_label = QLabel(self._tr("simple.label.en_vanilla_install"))
         self.simple_en_ref_edit = QLineEdit()
-        self.simple_en_ref_edit.setPlaceholderText(self._tr("simple.en_vanilla_hint"))
-        self.simple_en_ref_edit.setClearButtonEnabled(True)
+        self.simple_en_ref_edit.setVisible(False)
         self.simple_en_ref_edit.textChanged.connect(lambda value: self._mirror_line_edit_text("en_ref_edit", value))
-        self.simple_en_ref_browse_button = QPushButton(self._tr("btn.browse"))
-        self.simple_en_ref_browse_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.simple_en_ref_browse_button.clicked.connect(lambda: self._pick_directory(self.simple_en_ref_edit))
+
+        # Language selection
+        self.simple_source_lang_label = QLabel(self._tr("simple.label.source_language"))
+        self.simple_source_lang_combo = QComboBox()
+        for code, label in LANGUAGE_OPTIONS:
+            self.simple_source_lang_combo.addItem(f"{code} - {label}", code)
+        self._set_language_combo_value(self.simple_source_lang_combo, self._source_lang_code)
+        self.simple_source_lang_combo.currentIndexChanged.connect(lambda _: self._sync_simple_language_to_expert())
+
+        self.simple_target_lang_label = QLabel(self._tr("simple.label.target_language"))
+        self.simple_target_lang_combo = QComboBox()
+        for code, label in LANGUAGE_OPTIONS:
+            self.simple_target_lang_combo.addItem(f"{code} - {label}", code)
+        self._set_language_combo_value(self.simple_target_lang_combo, self._target_lang_code)
+        self.simple_target_lang_combo.currentIndexChanged.connect(lambda _: self._sync_simple_language_to_expert())
+
         source_row = QHBoxLayout()
         source_row.setSpacing(8)
         source_row.addWidget(self.simple_source_edit, 1)
         source_row.addWidget(self.simple_source_browse_button)
-        target_row = QHBoxLayout()
-        target_row.setSpacing(8)
-        target_row.addWidget(self.simple_target_edit, 1)
-        target_row.addWidget(self.simple_target_browse_button)
-        en_ref_row = QHBoxLayout()
-        en_ref_row.setSpacing(8)
-        en_ref_row.addWidget(self.simple_en_ref_edit, 1)
-        en_ref_row.addWidget(self.simple_en_ref_browse_button)
         paths_layout.addWidget(self.simple_paths_help_label)
         paths_layout.addSpacing(4)
         paths_layout.addWidget(self.simple_source_label)
         paths_layout.addLayout(source_row)
         paths_layout.addSpacing(8)
-        paths_layout.addWidget(self.simple_target_label)
-        paths_layout.addLayout(target_row)
-        paths_layout.addSpacing(8)
-        paths_layout.addWidget(self.simple_en_ref_label)
-        paths_layout.addLayout(en_ref_row)
+        paths_layout.addWidget(self.simple_source_lang_label)
+        paths_layout.addWidget(self.simple_source_lang_combo)
+        paths_layout.addSpacing(4)
+        paths_layout.addWidget(self.simple_target_lang_label)
+        paths_layout.addWidget(self.simple_target_lang_combo)
         paths_layout.addStretch(1)
 
         self.simple_scan_group = QGroupBox(self._tr("simple.group.scan"))
         scan_layout = QVBoxLayout(self.simple_scan_group)
         scan_layout.setContentsMargins(12, 14, 12, 12)
         scan_layout.setSpacing(10)
-        self.simple_scan_help_label = QLabel(self._tr("simple.scan.help"))
+        self.simple_scan_help_label = QLabel(self._tr("simple.scan.help.no_ref"))
         self.simple_scan_help_label.setWordWrap(True)
         self.simple_scan_help_label.setStyleSheet("color: #8b95a7;")
         self.simple_scan_help_label.setMinimumHeight(52)
@@ -626,19 +627,12 @@ class UIBuildMixin:
         self.simple_progress_chart = CircularProgressChart()
         self.simple_progress_chart.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.simple_progress_chart.setFixedHeight(180)
-        self.simple_scan_summary_label = QLabel(self._tr("simple.summary.idle"))
+        self.simple_scan_summary_label = QLabel(self._tr("simple.summary.idle.no_ref"))
         self.simple_scan_summary_label.setWordWrap(True)
         self.simple_scan_summary_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.simple_progress_legend_label = QLabel(self._tr("progress.legend"))
         self.simple_progress_legend_label.setWordWrap(True)
         self.simple_progress_legend_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.simple_audio_progress_label = QLabel(self._tr("progress.audio.none"))
-        self.simple_audio_progress_label.setWordWrap(True)
-        self.simple_audio_progress_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.simple_audio_progress_bar = QProgressBar()
-        self.simple_audio_progress_bar.setMinimum(0)
-        self.simple_audio_progress_bar.setMaximum(100)
-        self.simple_audio_progress_bar.setValue(0)
         self.simple_utf_progress_label = QLabel(self._tr("progress.utf.none"))
         self.simple_utf_progress_label.setWordWrap(True)
         self.simple_utf_progress_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -651,8 +645,6 @@ class UIBuildMixin:
         scan_layout.addWidget(self.simple_scan_button)
         scan_layout.addWidget(self.simple_progress_chart, 0, Qt.AlignHCenter)
         scan_layout.addWidget(self.simple_progress_legend_label)
-        scan_layout.addWidget(self.simple_audio_progress_label)
-        scan_layout.addWidget(self.simple_audio_progress_bar)
         scan_layout.addWidget(self.simple_utf_progress_label)
         scan_layout.addWidget(self.simple_utf_progress_bar)
         scan_layout.addWidget(self.simple_scan_summary_label)
@@ -662,16 +654,38 @@ class UIBuildMixin:
         translate_layout = QVBoxLayout(self.simple_translate_group)
         translate_layout.setContentsMargins(12, 14, 12, 12)
         translate_layout.setSpacing(10)
-        self.simple_translate_help_label = QLabel(self._tr("simple.translate.help"))
+        self.simple_translate_help_label = QLabel(self._tr("simple.translate.help.no_ref"))
         self.simple_translate_help_label.setWordWrap(True)
         self.simple_translate_help_label.setStyleSheet("color: #8b95a7;")
         self.simple_translate_help_label.setMinimumHeight(52)
+        self.simple_auto_translate_button = QPushButton(self._tr("simple.btn.auto_translate"))
+        self.simple_auto_translate_button.setMinimumHeight(44)
+        self.simple_auto_translate_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.simple_auto_translate_button.clicked.connect(self._translate_all_open_entries)
+        self.simple_auto_translate_button.setStyleSheet(
+            "QPushButton {"
+            " background-color: #2196f3;"
+            " color: #ffffff;"
+            " font-size: 14px;"
+            " font-weight: 600;"
+            " border: 2px solid #64b5f6;"
+            " border-radius: 8px;"
+            " padding: 8px 16px;"
+            "}"
+            "QPushButton:hover {"
+            " background-color: #42a5f5;"
+            " border-color: #90caf9;"
+            "}"
+            "QPushButton:disabled {"
+            " background-color: #6a7a8a;"
+            " color: #d7d7d7;"
+            " border-color: #89958d;"
+            "}"
+        )
         self.simple_translate_button = QPushButton(self._tr("btn.apply_target"))
         self.simple_translate_button.setMinimumHeight(44)
         self.simple_translate_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.simple_translate_button.clicked.connect(self._apply_target_to_install)
-        self.simple_audio_copy_check = QCheckBox(self._tr("simple.audio_copy"))
-        self.simple_audio_copy_check.setChecked(True)
         self.simple_toolchain_label = QLabel("")
         self.simple_toolchain_label.setWordWrap(True)
         self.simple_toolchain_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -683,8 +697,9 @@ class UIBuildMixin:
         self.simple_status_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         translate_layout.addWidget(self.simple_translate_help_label)
         translate_layout.addSpacing(4)
+        translate_layout.addWidget(self.simple_auto_translate_button)
+        translate_layout.addSpacing(4)
         translate_layout.addWidget(self.simple_translate_button)
-        translate_layout.addWidget(self.simple_audio_copy_check)
         translate_layout.addWidget(self.simple_toolchain_label)
         translate_layout.addWidget(self.simple_translate_summary_label)
         translate_layout.addStretch(1)

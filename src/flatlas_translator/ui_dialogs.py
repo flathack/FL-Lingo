@@ -262,13 +262,24 @@ class BulkTranslateDialog(QDialog):
         self.progress_bar.setMaximum(max(total, 1))
         self.progress_bar.setValue(0)
         self.eta_label.setText("")
-        for i, unit in enumerate(units):
-            ref = f"{unit.source.dll_name}:{unit.source.local_id}"
-            source_text = unit.source_text
-            self._append_table_row(ref, source_text, "")
-            self.progress_bar.setValue(i + 1)
-            if (i + 1) % 50 == 0 or i + 1 == total:
-                QApplication.processEvents()
+        self.result_table.setUpdatesEnabled(False)
+        try:
+            for i, unit in enumerate(units):
+                ref = f"{unit.source.dll_name}:{unit.source.local_id}"
+                source_text = unit.source_text
+                row = self.result_table.rowCount()
+                self.result_table.insertRow(row)
+                self.result_table.setItem(row, 0, QTableWidgetItem(ref))
+                src_item = QTableWidgetItem(source_text.replace("\n", " ")[:200])
+                src_item.setToolTip(source_text)
+                self.result_table.setItem(row, 1, src_item)
+                self.result_table.setItem(row, 2, QTableWidgetItem(""))
+                self.progress_bar.setValue(i + 1)
+                if (i + 1) % 200 == 0:
+                    QApplication.processEvents()
+        finally:
+            self.result_table.setUpdatesEnabled(True)
+        self.result_table.scrollToBottom()
         self.info_label.setText(
             self._tr("dialog.bulk_preview_info").format(count=total, min_len=min_len)
         )

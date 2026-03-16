@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false")
 
-APP_VERSION = "0.1.2"
+
+APP_VERSION = "0.1.3"
 DEVELOPED_BY = "Developed by Aldenmar Odin - flathack"
 APP_TITLE = "FL Lingo"
 DEFAULT_LANGUAGE = "en"

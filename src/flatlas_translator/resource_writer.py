@@ -634,7 +634,7 @@ class ResourceWriter:
                 rc_lines.extend(["END", ""])
             for local_id in sorted(dict(infos_by_local_id or {})):
                 info_file = temp_root / f"ids_info_{local_id}.xml"
-                info_file.write_text(str(infos_by_local_id[local_id]), encoding="utf-8")
+                info_file.write_bytes(self._encode_html_resource(str(infos_by_local_id[local_id])))
                 rc_lines.append(f'{local_id} 23 "{info_file.as_posix()}"')
             rc_lines.append("")
             rc_path.write_text("\n".join(rc_lines), encoding="utf-8-sig")
@@ -767,7 +767,13 @@ class ResourceWriter:
 
     @staticmethod
     def _encode_html_resource(text: str) -> bytes:
-        normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+        raw = str(text or "")
+        # Normalize line endings to \r\n – Freelancer's RDL parser
+        # requires Windows-style CRLF; plain \n causes the engine to
+        # display raw XML tags instead of interpreting them.
+        normalized = raw.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
+        if not normalized.endswith("\r\n"):
+            normalized += "\r\n"
         return b"\xff\xfe" + normalized.encode("utf-16le")
 
     @staticmethod
@@ -817,6 +823,105 @@ class ResourceWriter:
             if file_path.suffix.lower() == ".dll":
                 return Path("EXE") / file_path.name
             return Path(file_path.name)
+
+    # ------------------------------------------------------------------
+    # Repair: fix XML/RDL line endings in already-written DLLs
+    # ------------------------------------------------------------------
+
+    def scan_xml_line_endings(
+        self,
+        exe_dir: Path,
+    ) -> dict[str, dict[int, str]]:
+        """Scan RT_HTML resources and return broken entries (wrong line endings).
+
+        Returns ``{dll_name: {local_id: text, ...}, ...}`` for every DLL
+        that contains at least one broken infocard.
+        """
+        exe_dir = Path(exe_dir)
+        if not exe_dir.is_dir():
+            raise FileNotFoundError(f"Directory not found: {exe_dir}")
+
+        dll_paths = sorted(
+            p for p in exe_dir.iterdir()
+            if p.is_file() and p.suffix.lower() == ".dll"
+        )
+        result: dict[str, dict[int, str]] = {}
+        for dll_path in dll_paths:
+            infos = self._html_reader.read_html_resources(dll_path)
+            if not infos:
+                continue
+            needs_fix: dict[int, str] = {}
+            for local_id, text in infos.items():
+                if "\n" in text and "\r\n" not in text:
+                    needs_fix[local_id] = text
+                elif text and not text.endswith("\r\n"):
+                    needs_fix[local_id] = text
+            if needs_fix:
+                result[dll_path.name] = needs_fix
+        return result
+
+    def repair_xml_line_endings(
+        self,
+        exe_dir: Path,
+        *,
+        backup_dir: Path | None = None,
+        progress_callback=None,
+    ) -> tuple[int, int, Path]:
+        """Re-encode RT_HTML resources with correct \\r\\n line endings.
+
+        Returns (fixed_infocards, fixed_dlls, backup_dir).
+        """
+        exe_dir = Path(exe_dir)
+        if not exe_dir.is_dir():
+            raise FileNotFoundError(f"Directory not found: {exe_dir}")
+
+        dll_paths = sorted(p for p in exe_dir.iterdir() if p.is_file() and p.suffix.lower() == ".dll")
+        if not dll_paths:
+            raise RuntimeError(f"No DLL files found in {exe_dir}")
+
+        resolved_backup = Path(backup_dir) if backup_dir else self._make_backup_dir(exe_dir.parent, None)
+
+        total_fixed = 0
+        total_dlls_fixed = 0
+
+        for dll_path in dll_paths:
+            infos = self._html_reader.read_html_resources(dll_path)
+            if not infos:
+                continue
+
+            needs_fix: dict[int, str] = {}
+            for local_id, text in infos.items():
+                if "\n" in text and "\r\n" not in text:
+                    needs_fix[local_id] = text
+                elif text and not text.endswith("\r\n"):
+                    needs_fix[local_id] = text
+
+            if not needs_fix:
+                continue
+
+            # Backup before patching
+            bak_path = resolved_backup / dll_path.name
+            if not bak_path.is_file():
+                bak_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dll_path, bak_path)
+
+            ok, error = self._write_resource_dll_entries(
+                dll_path,
+                self._string_reader.read_strings(dll_path),
+                infos,
+            )
+            if not ok:
+                if error == "no strings to write":
+                    continue          # DLL had no meaningful content after filtering
+                raise RuntimeError(f"Failed to repair {dll_path.name}: {error}")
+
+            total_fixed += len(needs_fix)
+            total_dlls_fixed += 1
+
+            if progress_callback:
+                progress_callback({"dll": dll_path.name, "fixed": len(needs_fix), "total_fixed": total_fixed})
+
+        return total_fixed, total_dlls_fixed, resolved_backup
 
     def _reference_audio_files(self, reference_install_dir: Path) -> list[Path]:
         reference_audio_root = Path(reference_install_dir) / self.AUDIO_DIALOGUE_ROOT

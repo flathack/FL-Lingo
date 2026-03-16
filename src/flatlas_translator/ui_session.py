@@ -693,6 +693,11 @@ class UISessionMixin:
                 return
 
     def _current_project(self) -> TranslatorProject:
+        en_ref = ""
+        if hasattr(self, "simple_en_ref_edit"):
+            en_ref = self.simple_en_ref_edit.text().strip()
+        if not en_ref and hasattr(self, "en_ref_edit"):
+            en_ref = self.en_ref_edit.text().strip()
         return TranslatorProject(
             source_install_dir=self.source_edit.text().strip(),
             target_install_dir=self.target_edit.text().strip(),
@@ -703,6 +708,7 @@ class UISessionMixin:
             target_catalog=self._target_catalog,
             paired_catalog=self._paired_catalog,
             dll_plans=tuple(self._dll_plans),
+            en_ref_install_dir=en_ref,
         )
 
     def _reset_session_state(self) -> None:

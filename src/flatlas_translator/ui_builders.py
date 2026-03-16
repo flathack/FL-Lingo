@@ -523,6 +523,7 @@ class UIBuildMixin:
         self.root_tabs = QTabWidget()
         self.root_tabs.addTab(self._build_start_page(), self._tr("tab.start"))
         self.root_tabs.addTab(self._build_editor_workspace_page(), self._tr("tab.workspace"))
+        self.root_tabs.addTab(self._build_troubleshoot_page(), self._tr("tab.troubleshoot"))
         self.main_mode_stack.addWidget(self.root_tabs)
         layout.addWidget(self.main_mode_stack, 1)
         self._apply_ui_mode(save=False)
@@ -782,6 +783,79 @@ class UIBuildMixin:
         self.mod_overrides_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.mod_overrides_table.verticalHeader().setVisible(False)
         layout.addWidget(self.mod_overrides_table, 1)
+        return page
+
+    def _build_troubleshoot_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+
+        self.troubleshoot_help_label = QLabel(self._tr("troubleshoot.help"))
+        self.troubleshoot_help_label.setWordWrap(True)
+        self.troubleshoot_help_label.setStyleSheet("color: #8b95a7;")
+        content_layout.addWidget(self.troubleshoot_help_label)
+        content_layout.addSpacing(12)
+
+        # ── Fix XML Tags ────────────────────────────────
+        self.fix_xml_group = QGroupBox(self._tr("troubleshoot.fix_xml.title"))
+        fix_xml_layout = QVBoxLayout(self.fix_xml_group)
+        fix_xml_layout.setContentsMargins(12, 14, 12, 12)
+        fix_xml_layout.setSpacing(10)
+        self.fix_xml_help_label = QLabel(self._tr("troubleshoot.fix_xml.help"))
+        self.fix_xml_help_label.setWordWrap(True)
+        self.fix_xml_help_label.setStyleSheet("color: #8b95a7;")
+        fix_xml_layout.addWidget(self.fix_xml_help_label)
+
+        # Step 1: Scan
+        self.fix_xml_scan_button = QPushButton(self._tr("troubleshoot.fix_xml.scan_btn"))
+        self.fix_xml_scan_button.setMinimumHeight(36)
+        self.fix_xml_scan_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.fix_xml_scan_button.clicked.connect(self._run_fix_xml_scan)
+        fix_xml_layout.addWidget(self.fix_xml_scan_button)
+
+        self.fix_xml_scan_result_label = QLabel("")
+        self.fix_xml_scan_result_label.setWordWrap(True)
+        fix_xml_layout.addWidget(self.fix_xml_scan_result_label)
+
+        # Step 2: Repair (fix data in project)
+        self.fix_xml_repair_button = QPushButton(self._tr("troubleshoot.fix_xml.repair_btn"))
+        self.fix_xml_repair_button.setMinimumHeight(36)
+        self.fix_xml_repair_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.fix_xml_repair_button.setEnabled(False)
+        self.fix_xml_repair_button.clicked.connect(self._run_fix_xml_repair)
+        fix_xml_layout.addWidget(self.fix_xml_repair_button)
+
+        self.fix_xml_progress_bar = QProgressBar()
+        self.fix_xml_progress_bar.setMinimum(0)
+        self.fix_xml_progress_bar.setMaximum(100)
+        self.fix_xml_progress_bar.setValue(0)
+        self.fix_xml_progress_bar.setVisible(False)
+        fix_xml_layout.addWidget(self.fix_xml_progress_bar)
+
+        self.fix_xml_repair_result_label = QLabel("")
+        self.fix_xml_repair_result_label.setWordWrap(True)
+        fix_xml_layout.addWidget(self.fix_xml_repair_result_label)
+
+        # Step 3: Apply to DLLs
+        self.fix_xml_apply_button = QPushButton(self._tr("troubleshoot.fix_xml.apply_btn"))
+        self.fix_xml_apply_button.setMinimumHeight(36)
+        self.fix_xml_apply_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.fix_xml_apply_button.setEnabled(False)
+        self.fix_xml_apply_button.clicked.connect(self._run_fix_xml_apply)
+        fix_xml_layout.addWidget(self.fix_xml_apply_button)
+
+        self.fix_xml_apply_result_label = QLabel("")
+        self.fix_xml_apply_result_label.setWordWrap(True)
+        fix_xml_layout.addWidget(self.fix_xml_apply_result_label)
+
+        content_layout.addWidget(self.fix_xml_group)
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
         return page
 
     def _build_terminology_mapping_group(self) -> QGroupBox:

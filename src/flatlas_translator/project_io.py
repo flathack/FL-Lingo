@@ -24,6 +24,7 @@ class TranslatorProject:
     target_catalog: ResourceCatalog | None
     paired_catalog: ResourceCatalog | None
     dll_plans: tuple[DllRelocalizationPlan, ...]
+    en_ref_install_dir: str = ""
 
 
 def save_project(project: TranslatorProject, output_path: Path) -> Path:
@@ -53,6 +54,7 @@ def load_project(input_path: Path) -> TranslatorProject:
         target_catalog=target_catalog,
         paired_catalog=paired_catalog,
         dll_plans=dll_plans,
+        en_ref_install_dir=str(payload.get("en_ref_install_dir", "") or ""),
     )
 
 
@@ -76,6 +78,7 @@ def _project_payload(project: TranslatorProject) -> dict[str, object]:
         "version": 1,
         "source_install_dir": project.source_install_dir,
         "target_install_dir": project.target_install_dir,
+        "en_ref_install_dir": project.en_ref_install_dir,
         "include_infocards": bool(project.include_infocards),
         "source_language": project.source_language,
         "target_language": project.target_language,

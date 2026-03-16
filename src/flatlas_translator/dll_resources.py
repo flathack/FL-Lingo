@@ -147,17 +147,17 @@ def decode_resource_text_blob(blob: bytes) -> str:
         return ""
     if blob.startswith(b"\xff\xfe") or blob.startswith(b"\xfe\xff"):
         try:
-            return blob.decode("utf-16", errors="ignore").strip()
+            return blob.decode("utf-16", errors="ignore").strip("\x00")
         except Exception:
             pass
     if b"\x00" in blob:
         try:
-            return blob.decode("utf-16le", errors="ignore").replace("\x00", "").strip()
+            return blob.decode("utf-16le", errors="ignore").replace("\x00", "").strip("\x00")
         except Exception:
             pass
     for encoding in ("utf-8", "cp1252", "latin-1"):
         try:
-            return blob.decode(encoding, errors="ignore").strip()
+            return blob.decode(encoding, errors="ignore").strip("\x00")
         except Exception:
             continue
     return ""

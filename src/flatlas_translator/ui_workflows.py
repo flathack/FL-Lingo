@@ -188,6 +188,11 @@ class UIWorkflowMixin:
         self._project_path = Path(input_path)
         self.source_edit.setText(project.source_install_dir)
         self.target_edit.setText(project.target_install_dir)
+        if project.en_ref_install_dir:
+            if hasattr(self, "en_ref_edit"):
+                self.en_ref_edit.setText(project.en_ref_install_dir)
+            if hasattr(self, "simple_en_ref_edit"):
+                self.simple_en_ref_edit.setText(project.en_ref_install_dir)
         self.include_infocards_check.setChecked(project.include_infocards)
         self._source_lang_code = self._normalize_lang_code(project.source_language, self._source_lang_code)
         self._target_lang_code = self._normalize_lang_code(project.target_language, self._target_lang_code)
@@ -1016,3 +1021,128 @@ class UIWorkflowMixin:
             progress.close()
             if hasattr(self, "global_progress_bar"):
                 self.global_progress_bar.setVisible(False)
+
+    # ------------------------------------------------------------------
+    # Troubleshooting: Fix XML Tags  (3-step workflow)
+    # ------------------------------------------------------------------
+
+    def _run_fix_xml_scan(self) -> None:
+        """Step 1 – scan DLLs for broken line endings in RT_HTML infocards."""
+        source_dir = self.source_edit.text().strip() if hasattr(self, "source_edit") else ""
+        initial_dir = str(Path(source_dir) / "EXE") if source_dir and Path(source_dir).is_dir() else ""
+        exe_dir = QFileDialog.getExistingDirectory(
+            self,
+            self._tr("troubleshoot.fix_xml.select_dir"),
+            initial_dir,
+        )
+        if not exe_dir:
+            return
+
+        exe_path = Path(exe_dir)
+        self.fix_xml_scan_result_label.setText(self._tr("troubleshoot.fix_xml.scan_running"))
+        self.fix_xml_repair_button.setEnabled(False)
+        self.fix_xml_apply_button.setEnabled(False)
+        self.fix_xml_repair_result_label.setText("")
+        self.fix_xml_apply_result_label.setText("")
+        QApplication.processEvents()
+
+        try:
+            scan_results = self._writer.scan_xml_line_endings(exe_path)
+        except Exception as exc:
+            self.fix_xml_scan_result_label.setText(
+                self._tr("troubleshoot.fix_xml.scan_error").format(error=str(exc))
+            )
+            self._set_status(self._tr("status.operation_failed"))
+            return
+
+        total_broken = sum(len(v) for v in scan_results.values())
+        if total_broken == 0:
+            self.fix_xml_scan_result_label.setText(self._tr("troubleshoot.fix_xml.scan_ok"))
+            self._set_status(self._tr("troubleshoot.fix_xml.scan_ok"))
+            return
+
+        self._fix_xml_exe_dir = exe_path
+        self._fix_xml_scan_results = scan_results
+        self.fix_xml_scan_result_label.setText(
+            self._tr("troubleshoot.fix_xml.scan_result").format(
+                count=total_broken, dlls=len(scan_results),
+            )
+        )
+        self.fix_xml_repair_button.setEnabled(True)
+        self._set_status(
+            self._tr("troubleshoot.fix_xml.scan_result").format(
+                count=total_broken, dlls=len(scan_results),
+            )
+        )
+
+    def _run_fix_xml_repair(self) -> None:
+        """Step 2 – verify scan results and save the project."""
+        scan_results = getattr(self, "_fix_xml_scan_results", None)
+        if not scan_results:
+            return
+
+        self.fix_xml_repair_button.setEnabled(False)
+        self.fix_xml_progress_bar.setVisible(True)
+        self.fix_xml_progress_bar.setValue(50)
+        QApplication.processEvents()
+
+        total_fixed = sum(len(v) for v in scan_results.values())
+
+        # save project
+        if self._project_path is not None:
+            self._save_project_file()
+
+        self.fix_xml_progress_bar.setValue(100)
+        self.fix_xml_repair_result_label.setText(
+            self._tr("troubleshoot.fix_xml.repair_done").format(count=total_fixed)
+        )
+        self.fix_xml_apply_button.setEnabled(True)
+        self._set_status(
+            self._tr("troubleshoot.fix_xml.repair_done").format(count=total_fixed)
+        )
+
+    def _run_fix_xml_apply(self) -> None:
+        """Step 3 – write corrected resources to the DLL files."""
+        exe_dir = getattr(self, "_fix_xml_exe_dir", None)
+        scan_results = getattr(self, "_fix_xml_scan_results", None)
+        if not scan_results or exe_dir is None:
+            return
+
+        self.fix_xml_apply_button.setEnabled(False)
+        self.fix_xml_progress_bar.setValue(0)
+        self.fix_xml_progress_bar.setVisible(True)
+        QApplication.processEvents()
+
+        try:
+            total_fixed = 0
+            total_dlls = 0
+
+            def _on_progress(info: dict) -> None:
+                nonlocal total_fixed, total_dlls
+                total_fixed = info["total_fixed"]
+                total_dlls += 1
+                pct = int(total_dlls / len(scan_results) * 100)
+                self.fix_xml_progress_bar.setValue(min(pct, 100))
+                QApplication.processEvents()
+
+            fixed, dlls, backup_dir = self._writer.repair_xml_line_endings(
+                exe_dir, progress_callback=_on_progress,
+            )
+
+            self.fix_xml_progress_bar.setValue(100)
+            self.fix_xml_apply_result_label.setText(
+                self._tr("troubleshoot.fix_xml.apply_done").format(
+                    count=fixed, dlls=dlls, backup=backup_dir,
+                )
+            )
+            self._set_status(
+                self._tr("troubleshoot.fix_xml.apply_done").format(
+                    count=fixed, dlls=dlls, backup=backup_dir,
+                )
+            )
+        except Exception as exc:
+            self.fix_xml_apply_result_label.setText(
+                self._tr("troubleshoot.fix_xml.apply_error").format(error=str(exc))
+            )
+            self._set_status(self._tr("status.operation_failed"))
+

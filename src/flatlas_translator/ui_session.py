@@ -578,21 +578,20 @@ class UISessionMixin:
             self._show_error(self._tr("error.source_missing").format(path=source_dir))
             return
         self._store_language_pair()
+        include_infocards = self.include_infocards_check.isChecked()
         try:
             self._run_with_progress(
                 self._tr("dialog.progress_title"),
                 self._tr("progress.load_source"),
-                lambda: self._with_busy_cursor(
-                    lambda: setattr(
-                        self,
-                        "_source_catalog",
-                        apply_mod_overrides(
-                            self._loader.load_catalog(
-                                source_dir,
-                                include_infocards=self.include_infocards_check.isChecked(),
-                            )
-                        ),
-                    )
+                lambda: setattr(
+                    self,
+                    "_source_catalog",
+                    apply_mod_overrides(
+                        self._loader.load_catalog(
+                            source_dir,
+                            include_infocards=include_infocards,
+                        )
+                    ),
                 ),
             )
         except Exception as exc:
@@ -627,6 +626,7 @@ class UISessionMixin:
             self._show_error(self._tr("error.target_missing").format(path=target_dir))
             return
         self._store_language_pair()
+        include_infocards = self.include_infocards_check.isChecked()
         try:
             target_catalog: ResourceCatalog | None = None
 
@@ -634,23 +634,31 @@ class UISessionMixin:
                 nonlocal target_catalog
                 target_catalog = self._loader.load_catalog(
                     target_dir,
-                    include_infocards=self.include_infocards_check.isChecked(),
+                    include_infocards=include_infocards,
                 )
 
             self._run_with_progress(
                 self._tr("dialog.progress_title"),
                 self._tr("progress.compare"),
-                lambda: self._with_busy_cursor(_load),
+                _load,
             )
             assert target_catalog is not None
             self._target_catalog = target_catalog
-            self._paired_catalog = apply_mod_overrides(
-                apply_known_term_suggestions(
-                    pair_catalogs(self._source_catalog, target_catalog),
-                    target_language=self._target_lang_code,
+
+            def _pair_and_suggest() -> None:
+                self._paired_catalog = apply_mod_overrides(
+                    apply_known_term_suggestions(
+                        pair_catalogs(self._source_catalog, target_catalog),
+                        target_language=self._target_lang_code,
+                    )
                 )
+                self._dll_plans = build_dll_plans(self._source_catalog, self._paired_catalog, target_catalog)
+
+            self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.compare"),
+                _pair_and_suggest,
             )
-            self._dll_plans = build_dll_plans(self._source_catalog, self._paired_catalog, target_catalog)
         except Exception as exc:
             self._show_error(self._tr("error.compare_failed").format(error=exc))
             return
@@ -674,31 +682,38 @@ class UISessionMixin:
                 return
 
         self._store_language_pair()
-        # Build a paired catalog where every entry has no target reference
-        paired_units = tuple(
-            TranslationUnit(
-                kind=u.kind,
-                source=u.source,
-                source_text=u.source_text,
-                target=None,
-                target_text="",
-                manual_text=u.manual_text,
-                translation_source=u.translation_source,
+
+        def _build_paired() -> None:
+            paired_units = tuple(
+                TranslationUnit(
+                    kind=u.kind,
+                    source=u.source,
+                    source_text=u.source_text,
+                    target=None,
+                    target_text="",
+                    manual_text=u.manual_text,
+                    translation_source=u.translation_source,
+                )
+                for u in self._source_catalog.units
             )
-            for u in self._source_catalog.units
-        )
-        self._target_catalog = None
-        self._paired_catalog = apply_mod_overrides(
-            apply_known_term_suggestions(
-                ResourceCatalog(
-                    install_dir=self._source_catalog.install_dir,
-                    freelancer_ini=self._source_catalog.freelancer_ini,
-                    units=paired_units,
-                ),
-                target_language=self._target_lang_code,
+            self._target_catalog = None
+            self._paired_catalog = apply_mod_overrides(
+                apply_known_term_suggestions(
+                    ResourceCatalog(
+                        install_dir=self._source_catalog.install_dir,
+                        freelancer_ini=self._source_catalog.freelancer_ini,
+                        units=paired_units,
+                    ),
+                    target_language=self._target_lang_code,
+                )
             )
+            self._dll_plans = build_dll_plans(self._source_catalog, self._paired_catalog, self._source_catalog)
+
+        self._run_with_progress(
+            self._tr("dialog.progress_title"),
+            self._tr("progress.compare"),
+            _build_paired,
         )
-        self._dll_plans = build_dll_plans(self._source_catalog, self._paired_catalog, self._source_catalog)
 
         self._invalidate_audio_progress_cache()
         self._apply_editor_default_filters(force=True)

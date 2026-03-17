@@ -212,8 +212,8 @@
       "Settled Planets": "Besiedelte Planeten",
       "Stats": "Daten",
       "Systems": "Systeme",
-      "Unknown": "Unbekannt",
-      "unknown": "unbekannt",
+      "Unknown System": "Unbekanntes System",
+      "unknown system": "unbekanntes System",
       "Yes": "Ja"
     },
     "terrain": {
@@ -222,8 +222,6 @@
       "barren": "kahl",
       "Dessert": "Wueste",
       "desert": "Wueste",
-      "Ice": "Eis",
-      "ice": "Eis",
       "terrestrial": "terrestrisch",
       "volcanic": "vulkanisch",
       "arid": "trocken"

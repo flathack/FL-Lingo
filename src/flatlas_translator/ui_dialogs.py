@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import queue
+import threading
 import time
 
 from PySide6.QtCore import Qt, QTimer
@@ -243,9 +245,13 @@ class BulkTranslateDialog(QDialog):
         self._translated_units: list[Any] = []
         self._log_entries: list[tuple[str, str, str]] = list(log_entries) if log_entries else []
         self._translate_times: list[float] = []
+        self._result_queue: queue.Queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._pause_event = threading.Event()
+        self._worker_thread: threading.Thread | None = None
         self._timer = QTimer(self)
         self._timer.setInterval(50)
-        self._timer.timeout.connect(self._translate_next)
+        self._timer.timeout.connect(self._poll_results)
 
         self.setWindowTitle(tr("dialog.bulk_translate_title"))
         self.setMinimumSize(720, 480)
@@ -372,7 +378,7 @@ class BulkTranslateDialog(QDialog):
         return [u for u in self._units if len(u.source_text.strip()) >= min_len]
 
     def _on_preview(self) -> None:
-        """Show all entries that would be translated, with progress bar."""
+        """Show all entries that would be translated — runs in a background thread."""
         units = self.filtered_units
         min_len = self.min_length_spin.value()
         total = len(units)
@@ -380,11 +386,44 @@ class BulkTranslateDialog(QDialog):
         self.progress_bar.setMaximum(max(total, 1))
         self.progress_bar.setValue(0)
         self.eta_label.setText("")
-        self.result_table.setUpdatesEnabled(False)
-        try:
+        self.preview_button.setEnabled(False)
+        self.start_button.setEnabled(False)
+
+        self._stop_event.clear()
+        preview_queue: queue.Queue = queue.Queue()
+
+        def _build_preview() -> None:
             for i, unit in enumerate(units):
+                if self._stop_event.is_set():
+                    return
                 ref = f"{unit.source.dll_name}:{unit.source.local_id}"
-                source_text = unit.source_text
+                preview_queue.put((i, ref, unit.source_text))
+            preview_queue.put(None)  # sentinel
+
+        thread = threading.Thread(target=_build_preview, daemon=True)
+        thread.start()
+
+        def _poll_preview() -> None:
+            batch = 0
+            while batch < 200:
+                try:
+                    item = preview_queue.get_nowait()
+                except queue.Empty:
+                    break
+                if item is None:
+                    preview_timer.stop()
+                    self.result_table.setUpdatesEnabled(True)
+                    self.result_table.scrollToBottom()
+                    self.info_label.setText(
+                        self._tr("dialog.bulk_preview_info").format(count=total, min_len=min_len)
+                    )
+                    self.status_label.setText(
+                        self._tr("dialog.bulk_preview_info").format(count=total, min_len=min_len)
+                    )
+                    self.preview_button.setEnabled(True)
+                    self.start_button.setEnabled(True)
+                    return
+                i, ref, source_text = item
                 row = self.result_table.rowCount()
                 self.result_table.insertRow(row)
                 self.result_table.setItem(row, 0, QTableWidgetItem(ref))
@@ -393,17 +432,14 @@ class BulkTranslateDialog(QDialog):
                 self.result_table.setItem(row, 1, src_item)
                 self.result_table.setItem(row, 2, QTableWidgetItem(""))
                 self.progress_bar.setValue(i + 1)
-                if (i + 1) % 200 == 0:
-                    QApplication.processEvents()
-        finally:
-            self.result_table.setUpdatesEnabled(True)
-        self.result_table.scrollToBottom()
-        self.info_label.setText(
-            self._tr("dialog.bulk_preview_info").format(count=total, min_len=min_len)
-        )
-        self.status_label.setText(
-            self._tr("dialog.bulk_preview_info").format(count=total, min_len=min_len)
-        )
+                batch += 1
+
+        self.result_table.setUpdatesEnabled(False)
+        preview_timer = QTimer(self)
+        preview_timer.setInterval(30)
+        preview_timer.timeout.connect(_poll_preview)
+        self._preview_timer = preview_timer
+        preview_timer.start()
 
     def _on_start(self) -> None:
         units = self.filtered_units
@@ -420,33 +456,120 @@ class BulkTranslateDialog(QDialog):
         self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=0, total=total))
         self.eta_label.setText("")
         self.start_button.setEnabled(False)
+        self.preview_button.setEnabled(False)
         self.min_length_spin.setEnabled(False)
         self.pause_button.setEnabled(True)
         self.status_label.setText("")
         self._paused = False
+        self._stop_event.clear()
+        self._pause_event.clear()
+        self._worker_thread = threading.Thread(target=self._translate_worker, daemon=True)
+        self._worker_thread.start()
         self._timer.start()
+
+    def _translate_worker(self) -> None:
+        """Background thread: translates units and puts results into the queue."""
+        units = self._units_to_process
+        for idx, unit in enumerate(units):
+            if self._stop_event.is_set():
+                return
+            # Wait while paused
+            while self._pause_event.is_set():
+                if self._stop_event.is_set():
+                    return
+                self._pause_event.wait(0.1)
+                if not self._pause_event.is_set():
+                    break
+            if self._stop_event.is_set():
+                return
+
+            source_text = unit.source_text
+            ref = f"{unit.source.dll_name}:{unit.source.local_id}"
+            if not source_text.strip():
+                self._result_queue.put(("skip", idx, unit, ref, "", "", 0.0))
+                continue
+            t0 = time.monotonic()
+            try:
+                translated = self._translate_fn(source_text, self._source_lang, self._target_lang)
+                elapsed = time.monotonic() - t0
+                self._result_queue.put(("ok", idx, unit, ref, source_text, translated, elapsed))
+            except Exception as exc:
+                elapsed = time.monotonic() - t0
+                self._result_queue.put(("error", idx, unit, ref, source_text, str(exc), elapsed))
+        self._result_queue.put(("done", 0, None, "", "", "", 0.0))
+
+    def _poll_results(self) -> None:
+        """Main-thread timer: drain result queue and update UI."""
+        if not hasattr(self, "_units_to_process"):
+            return
+        total = len(self._units_to_process)
+        while True:
+            try:
+                item = self._result_queue.get_nowait()
+            except queue.Empty:
+                break
+            status, idx, unit, ref, source_text, result_text, elapsed = item
+            if status == "done":
+                self._timer.stop()
+                self.pause_button.setEnabled(False)
+                self.start_button.setEnabled(False)
+                self._save_progress_fn(self._translated_units)
+                self.status_label.setText(self._tr("dialog.bulk_finished"))
+                return
+            self._current_index = idx + 1
+            if status == "skip":
+                self.progress_bar.setValue(self._current_index)
+                self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
+                continue
+            self._translate_times.append(elapsed)
+            if status == "ok":
+                self._done += 1
+                self._translated_units.append((unit, result_text))
+                entry = (ref, source_text, result_text)
+            else:
+                entry = (ref, source_text, f"\u274c {result_text}")
+            self._log_entries.append(entry)
+            self._append_table_row(*entry)
+            self.progress_bar.setValue(self._current_index)
+            self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
+            self._update_eta()
 
     def _on_pause(self) -> None:
         if self._paused:
             # resume
             self._paused = False
+            self._pause_event.clear()
             self.pause_button.setText(self._tr("dialog.bulk_pause"))
             self.status_label.setText("")
             self._timer.start()
         else:
             # pause
             self._paused = True
+            self._pause_event.set()
             self._timer.stop()
+            # Drain any remaining items from queue before saving
+            self._poll_results()
             self.pause_button.setText(self._tr("dialog.bulk_resume"))
             self.status_label.setText(self._tr("dialog.bulk_paused"))
             self._save_progress_fn(self._translated_units)
             self.status_label.setText(self._tr("dialog.bulk_saved"))
 
     def _on_close(self) -> None:
-        self._timer.stop()
+        self._stop_translation()
         if self._translated_units:
             self._save_progress_fn(self._translated_units)
         self.accept()
+
+    def _stop_translation(self) -> None:
+        """Signal worker thread to stop and wait for it."""
+        self._stop_event.set()
+        self._pause_event.clear()
+        self._timer.stop()
+        if hasattr(self, "_preview_timer"):
+            self._preview_timer.stop()
+        if self._worker_thread is not None and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=2.0)
+            self._worker_thread = None
 
     def _format_eta(self, remaining_seconds: float) -> str:
         """Format remaining seconds into a human-readable string."""
@@ -469,52 +592,8 @@ class BulkTranslateDialog(QDialog):
         eta_seconds = avg_time * remaining
         self.eta_label.setText(self._format_eta(eta_seconds))
 
-    def _translate_next(self) -> None:
-        if self._paused:
-            return
-        units = self._units_to_process
-        total = len(units)
-        if self._current_index >= total:
-            self._timer.stop()
-            self.pause_button.setEnabled(False)
-            self.start_button.setEnabled(False)
-            self._save_progress_fn(self._translated_units)
-            self.status_label.setText(self._tr("dialog.bulk_finished"))
-            return
-        unit = units[self._current_index]
-        self._current_index += 1
-        source_text = unit.source_text
-        if not source_text.strip():
-            self.progress_bar.setValue(self._current_index)
-            self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
-            return
-        ref = f"{unit.source.dll_name}:{unit.source.local_id}"
-        t0 = time.monotonic()
-        try:
-            translated = self._translate_fn(source_text, self._source_lang, self._target_lang)
-        except Exception as exc:
-            elapsed = time.monotonic() - t0
-            self._translate_times.append(elapsed)
-            entry = (ref, source_text, f"\u274c {exc}")
-            self._log_entries.append(entry)
-            self._append_table_row(*entry)
-            self.progress_bar.setValue(self._current_index)
-            self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
-            self._update_eta()
-            return
-        elapsed = time.monotonic() - t0
-        self._translate_times.append(elapsed)
-        self._done += 1
-        self._translated_units.append((unit, translated))
-        entry = (ref, source_text, translated)
-        self._log_entries.append(entry)
-        self._append_table_row(*entry)
-        self.progress_bar.setValue(self._current_index)
-        self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
-        self._update_eta()
-
     def closeEvent(self, event) -> None:  # noqa: N802
-        self._timer.stop()
+        self._stop_translation()
         if self._translated_units:
             self._save_progress_fn(self._translated_units)
         super().closeEvent(event)

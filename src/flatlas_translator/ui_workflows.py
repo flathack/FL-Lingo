@@ -1161,22 +1161,48 @@ class UIWorkflowMixin:
         QDesktopServices.openUrl(QUrl(url))
 
     def _run_with_progress(self, title: str, label: str, callback):
+        import threading
+
         progress = QProgressDialog(label, "", 0, 0, self)
         progress.setWindowTitle(title)
         progress.setCancelButton(None)
         progress.setMinimumDuration(0)
         progress.setAutoClose(True)
         progress.setAutoReset(True)
+        progress.setWindowModality(Qt.WindowModal)
         progress.show()
         if hasattr(self, "global_progress_bar"):
             self.global_progress_bar.setVisible(True)
-        QApplication.processEvents()
-        try:
-            return callback()
-        finally:
-            progress.close()
-            if hasattr(self, "global_progress_bar"):
-                self.global_progress_bar.setVisible(False)
+
+        result_holder: list = []
+        error_holder: list = []
+
+        app = QApplication.instance()
+        if app is not None:
+            from PySide6.QtGui import QCursor
+            app.setOverrideCursor(QCursor(Qt.WaitCursor))
+
+        def _worker() -> None:
+            try:
+                result_holder.append(callback())
+            except Exception as exc:
+                error_holder.append(exc)
+
+        thread = threading.Thread(target=_worker, daemon=True)
+        thread.start()
+        while thread.is_alive():
+            QApplication.processEvents()
+            thread.join(timeout=0.03)
+
+        progress.close()
+        if app is not None:
+            app.restoreOverrideCursor()
+        if hasattr(self, "global_progress_bar"):
+            self.global_progress_bar.setVisible(False)
+
+        if error_holder:
+            raise error_holder[0]
+        return result_holder[0] if result_holder else None
 
     # ------------------------------------------------------------------
     # Troubleshooting: Fix XML Tags  (3-step workflow)

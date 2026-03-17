@@ -44,13 +44,13 @@
 
 ## 1. What is FL Lingo?
 
-FL Lingo is a relocalization tool for Freelancer mods. It helps translate a modded Freelancer installation (which has often been reset to English) back into another language — typically German.
+FL Lingo is a relocalization tool for Freelancer mods. Many Freelancer mods ship with English-only texts — FL Lingo helps translate the mod-specific content into other languages, typically German.
 
 **The three core tasks:**
 
-1. **Find reference texts:** FL Lingo compares a mod installation with a clean reference installation and automatically identifies which texts can be safely restored.
+1. **Find reference texts:** FL Lingo compares a mod installation with a clean reference installation and automatically identifies which mod texts correspond to known reference texts and can be reused.
 2. **Identify mod-specific texts:** New texts that only exist in the mod are marked as "open" and can be translated externally or manually.
-3. **Write back:** FL Lingo safely writes the finished translations back into the mod installation's resource DLLs — with automatic backup.
+3. **Write back:** FL Lingo safely writes the finished translations back into the mod's resource DLLs — with automatic backup.
 
 **Supported resource types:**
 

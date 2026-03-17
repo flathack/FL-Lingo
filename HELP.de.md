@@ -44,11 +44,11 @@
 
 ## 1. Was ist FL Lingo?
 
-FL Lingo ist ein Relocalization-Tool für Freelancer-Mods. Es hilft dabei, einen modifizierten Freelancer-Spielstand (der oft auf Englisch zurückgesetzt wurde) wieder in eine andere Sprache zu übersetzen — typischerweise Deutsch.
+FL Lingo ist ein Relocalization-Tool für Freelancer-Mods. Viele Freelancer-Mods liefern nur englischsprachige Texte mit — FL Lingo hilft dabei, die mod-spezifischen Inhalte in andere Sprachen zu übersetzen, typischerweise Deutsch.
 
 **Die drei Kernaufgaben:**
 
-1. **Referenztexte finden:** FL Lingo vergleicht eine Mod-Installation mit einer sauberen Referenzinstallation und erkennt automatisch, welche Texte sicher wiederhergestellt werden können.
+1. **Referenztexte finden:** FL Lingo vergleicht die Mod-Installation mit einer sauberen Referenzinstallation und erkennt automatisch, welche Mod-Texte bekannten Referenztexten entsprechen und wiederverwendet werden können.
 2. **Mod-spezifische Texte identifizieren:** Neue Texte, die nur in der Mod existieren, werden als „offen" markiert und können extern oder manuell übersetzt werden.
 3. **Zurückschreiben:** FL Lingo schreibt die fertigen Übersetzungen sicher in die Ressourcen-DLLs der Mod-Installation zurück — mit automatischem Backup.
 

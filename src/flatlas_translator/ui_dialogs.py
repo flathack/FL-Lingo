@@ -392,7 +392,8 @@ class BulkTranslatePanel(QWidget):
 
     # --- helpers ---
 
-    def _append_table_row(self, ref: str, source: str, target: str) -> None:
+    def _insert_table_row(self, ref: str, source: str, target: str) -> None:
+        """Insert a row without scrolling (caller handles scroll after batch)."""
         row = self.result_table.rowCount()
         self.result_table.insertRow(row)
         self.result_table.setItem(row, 0, QTableWidgetItem(ref))
@@ -402,6 +403,10 @@ class BulkTranslatePanel(QWidget):
         tgt_item = QTableWidgetItem(target.replace("\n", " ")[:200])
         tgt_item.setToolTip(target)
         self.result_table.setItem(row, 2, tgt_item)
+
+    def _append_table_row(self, ref: str, source: str, target: str) -> None:
+        """Insert a row and scroll to bottom (used by populate/preview)."""
+        self._insert_table_row(ref, source, target)
         self.result_table.scrollToBottom()
 
     @property
@@ -504,69 +509,142 @@ class BulkTranslatePanel(QWidget):
         self._worker_thread.start()
         self._timer.start()
 
+    _CONCURRENT_REQUESTS = 3  # parallel API requests (balance speed vs. rate-limit risk)
+
     def _translate_worker(self) -> None:
-        """Background thread: translates units and puts results into the queue."""
+        """Background thread: translates units in parallel batches."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from .translator_service import translate_text_batch
+
         units = self._units_to_process
-        for idx, unit in enumerate(units):
-            if self._stop_event.is_set():
-                return
-            # Wait while paused
-            while self._pause_event.is_set():
+        batch_char_limit = 4500
+
+        # --- Phase 1: pre-build all batches, emit skips immediately ---
+        all_batches: list[tuple[list, list[str], list[int]]] = []
+        idx = 0
+        while idx < len(units):
+            batch_units: list = []
+            batch_texts: list[str] = []
+            batch_indices: list[int] = []
+            batch_chars = 0
+            while idx < len(units):
+                unit = units[idx]
+                source_text = unit.source_text
+                if not source_text.strip():
+                    ref = f"{unit.source.dll_name}:{unit.source.local_id}"
+                    self._result_queue.put(("skip", idx, unit, ref, "", "", 0.0))
+                    idx += 1
+                    continue
+                text_len = len(source_text)
+                if batch_chars + text_len > batch_char_limit and batch_units:
+                    break
+                batch_units.append(unit)
+                batch_texts.append(source_text)
+                batch_indices.append(idx)
+                batch_chars += text_len
+                idx += 1
+            if batch_texts:
+                all_batches.append((batch_units, batch_texts, batch_indices))
+
+        # --- Phase 2: translate batches with parallelism ---
+        bi = 0
+        n_workers = self._CONCURRENT_REQUESTS
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            while bi < len(all_batches):
                 if self._stop_event.is_set():
                     return
-                self._pause_event.wait(0.1)
-                if not self._pause_event.is_set():
-                    break
-            if self._stop_event.is_set():
-                return
+                # Handle pause
+                while self._pause_event.is_set():
+                    if self._stop_event.is_set():
+                        return
+                    time.sleep(0.1)
 
-            source_text = unit.source_text
-            ref = f"{unit.source.dll_name}:{unit.source.local_id}"
-            if not source_text.strip():
-                self._result_queue.put(("skip", idx, unit, ref, "", "", 0.0))
-                continue
-            t0 = time.monotonic()
-            try:
-                translated = self._translate_fn(source_text, self._source_lang, self._target_lang)
-                elapsed = time.monotonic() - t0
-                self._result_queue.put(("ok", idx, unit, ref, source_text, translated, elapsed))
-            except Exception as exc:
-                elapsed = time.monotonic() - t0
-                self._result_queue.put(("error", idx, unit, ref, source_text, str(exc), elapsed))
+                # Submit a chunk of concurrent batches
+                chunk_end = min(bi + n_workers, len(all_batches))
+                t0 = time.monotonic()
+                futures = {}
+                for ci in range(bi, chunk_end):
+                    b_units, b_texts, b_indices = all_batches[ci]
+                    fut = pool.submit(
+                        translate_text_batch, b_texts,
+                        self._source_lang, self._target_lang,
+                    )
+                    futures[fut] = (b_units, b_texts, b_indices)
+
+                total_texts_in_chunk = sum(len(v[1]) for v in futures.values())
+
+                for fut in as_completed(futures):
+                    b_units, b_texts, b_indices = futures[fut]
+                    elapsed = time.monotonic() - t0
+                    per_unit = elapsed / max(total_texts_in_chunk, 1)
+                    try:
+                        translated_list = fut.result()
+                        for j, (b_unit, src, result) in enumerate(
+                            zip(b_units, b_texts, translated_list)
+                        ):
+                            ref = f"{b_unit.source.dll_name}:{b_unit.source.local_id}"
+                            if isinstance(result, Exception):
+                                self._result_queue.put(
+                                    ("error", b_indices[j], b_unit, ref, src, str(result), per_unit)
+                                )
+                            else:
+                                self._result_queue.put(
+                                    ("ok", b_indices[j], b_unit, ref, src, result, per_unit)
+                                )
+                    except Exception as exc:
+                        for j, (b_unit, src) in enumerate(zip(b_units, b_texts)):
+                            ref = f"{b_unit.source.dll_name}:{b_unit.source.local_id}"
+                            self._result_queue.put(
+                                ("error", b_indices[j], b_unit, ref, src, str(exc), per_unit)
+                            )
+
+                bi = chunk_end
+
         self._result_queue.put(("done", 0, None, "", "", "", 0.0))
+
+    _POLL_MAX_PER_TICK = 20  # max results to process per timer tick
 
     def _poll_results(self) -> None:
         """Main-thread timer: drain result queue and update UI."""
         if not hasattr(self, "_units_to_process"):
             return
         total = len(self._units_to_process)
-        while True:
-            try:
-                item = self._result_queue.get_nowait()
-            except queue.Empty:
-                break
-            status, idx, unit, ref, source_text, result_text, elapsed = item
-            if status == "done":
-                self._timer.stop()
-                self.pause_button.setEnabled(False)
-                self.start_button.setEnabled(False)
-                self._save_progress_fn(self._translated_units)
-                self.status_label.setText(self._tr("dialog.bulk_finished"))
-                return
-            self._current_index = idx + 1
-            if status == "skip":
-                self.bulk_progress_bar.setValue(self._current_index)
-                self.bulk_progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
-                continue
-            self._translate_times.append(elapsed)
-            if status == "ok":
-                self._done += 1
-                self._translated_units.append((unit, result_text))
-                entry = (ref, source_text, result_text)
-            else:
-                entry = (ref, source_text, f"\u274c {result_text}")
-            self._log_entries.append(entry)
-            self._append_table_row(*entry)
+        processed = 0
+        table = self.result_table
+        table.setUpdatesEnabled(False)
+        try:
+            while processed < self._POLL_MAX_PER_TICK:
+                try:
+                    item = self._result_queue.get_nowait()
+                except queue.Empty:
+                    break
+                status, idx, unit, ref, source_text, result_text, elapsed = item
+                if status == "done":
+                    table.setUpdatesEnabled(True)
+                    table.scrollToBottom()
+                    self._timer.stop()
+                    self.pause_button.setEnabled(False)
+                    self.start_button.setEnabled(False)
+                    self._save_progress_fn(self._translated_units)
+                    self.status_label.setText(self._tr("dialog.bulk_finished"))
+                    return
+                self._current_index = idx + 1
+                if status == "skip":
+                    continue
+                processed += 1
+                self._translate_times.append(elapsed)
+                if status == "ok":
+                    self._done += 1
+                    self._translated_units.append((unit, result_text))
+                    entry = (ref, source_text, result_text)
+                else:
+                    entry = (ref, source_text, f"\u274c {result_text}")
+                self._log_entries.append(entry)
+                self._insert_table_row(*entry)
+        finally:
+            table.setUpdatesEnabled(True)
+        if processed > 0:
+            table.scrollToBottom()
             self.bulk_progress_bar.setValue(self._current_index)
             self.bulk_progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
             self._update_eta()

@@ -209,6 +209,7 @@ class UIWorkflowMixin:
             else None
         )
         self._dll_plans = list(project.dll_plans)
+        self._bulk_translate_log = list(project.bulk_translate_log)
         self._apply_editor_default_filters(force=True)
         self._saved_project_signature = self._current_project_signature()
         self._refresh_mod_override_entries()

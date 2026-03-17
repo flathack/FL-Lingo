@@ -1,6 +1,6 @@
 # Welcome to the FL Lingo Wiki
 
-**FL Lingo** is a relocalization tool for Freelancer mods. It restores translations in modded Freelancer installations by comparing them against a clean reference install — and writes the results safely back into the game's resource DLLs.
+**FL Lingo** is a relocalization tool for Freelancer mods. Many Freelancer mods ship with English-only texts — FL Lingo helps translate the mod-specific content into other languages by comparing a modded installation against a clean reference install and writing the results safely back into the mod's resource DLLs.
 
 ---
 
@@ -23,9 +23,9 @@
 
 ## What FL Lingo Does
 
-1. **Scans** your modded Freelancer installation and a clean reference install side by side.
-2. **Matches** resource entries automatically — texts that exist in both installations are restored instantly.
-3. **Highlights** mod-only entries that need manual or external translation.
+1. **Scans** a modded Freelancer installation and a clean reference install side by side.
+2. **Matches** mod-specific resource entries automatically — texts that exist in both installations are identified and reused.
+3. **Highlights** mod-only entries (new texts added by the mod) that need manual or external translation.
 4. **Writes** the finished translations back into the mod's resource DLLs with automatic backup.
 
 Supports `RT_STRING` (string tables) and `RT_HTML` (infocards) across all resource DLLs referenced by `freelancer.ini`.

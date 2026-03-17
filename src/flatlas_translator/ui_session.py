@@ -572,6 +572,43 @@ class UISessionMixin:
         widget.setText(value)
         widget.blockSignals(False)
 
+    @staticmethod
+    def _collect_manual_edits(catalog: ResourceCatalog | None) -> dict[tuple[str, str, int], tuple[str, str]]:
+        """Build a lookup of (kind, dll_name_lower, local_id) -> (manual_text, translation_source)."""
+        if catalog is None:
+            return {}
+        return {
+            (str(u.kind), str(u.source.dll_name).lower(), int(u.source.local_id)): (u.manual_text, u.translation_source)
+            for u in catalog.units
+            if u.manual_text
+        }
+
+    @staticmethod
+    def _apply_manual_edits(
+        catalog: ResourceCatalog,
+        edits: dict[tuple[str, str, int], tuple[str, str]],
+    ) -> ResourceCatalog:
+        """Merge previously saved manual translations back into *catalog*."""
+        if not edits:
+            return catalog
+        merged: list[TranslationUnit] = []
+        for u in catalog.units:
+            key = (str(u.kind), str(u.source.dll_name).lower(), int(u.source.local_id))
+            saved = edits.get(key)
+            if saved and not u.manual_text:
+                merged.append(TranslationUnit(
+                    kind=u.kind, source=u.source, source_text=u.source_text,
+                    target=u.target, target_text=u.target_text,
+                    manual_text=saved[0], translation_source=saved[1],
+                ))
+            else:
+                merged.append(u)
+        return ResourceCatalog(
+            install_dir=catalog.install_dir,
+            freelancer_ini=catalog.freelancer_ini,
+            units=tuple(merged),
+        )
+
     def _load_source_catalog(self) -> None:
         source_dir = Path(self.source_edit.text().strip())
         if not source_dir.exists():
@@ -579,6 +616,11 @@ class UISessionMixin:
             return
         self._store_language_pair()
         include_infocards = self.include_infocards_check.isChecked()
+
+        # Preserve existing manual translations before reloading from disk
+        prev_edits = self._collect_manual_edits(self._paired_catalog)
+        prev_edits.update(self._collect_manual_edits(self._source_catalog))
+
         try:
             self._run_with_progress(
                 self._tr("dialog.progress_title"),
@@ -598,6 +640,10 @@ class UISessionMixin:
             self._show_error(self._tr("error.load_source_failed").format(error=exc))
             return
 
+        # Merge saved manual translations back into the fresh catalog
+        if prev_edits:
+            self._source_catalog = self._apply_manual_edits(self._source_catalog, prev_edits)
+
         self._paired_catalog = None
         self._target_catalog = None
         self._dll_plans = []
@@ -616,6 +662,10 @@ class UISessionMixin:
         self._set_status(self._tr("status.loaded_source").format(path=source_dir))
 
     def _load_compare_catalog(self) -> None:
+        # Preserve existing manual translations before reloading
+        prev_edits = self._collect_manual_edits(self._paired_catalog)
+        prev_edits.update(self._collect_manual_edits(self._source_catalog))
+
         if self._source_catalog is None:
             self._load_source_catalog()
             if self._source_catalog is None:
@@ -646,9 +696,13 @@ class UISessionMixin:
             self._target_catalog = target_catalog
 
             def _pair_and_suggest() -> None:
+                paired = pair_catalogs(self._source_catalog, target_catalog)
+                # Merge saved manual translations back into paired catalog
+                if prev_edits:
+                    paired = self._apply_manual_edits(paired, prev_edits)
                 self._paired_catalog = apply_mod_overrides(
                     apply_known_term_suggestions(
-                        pair_catalogs(self._source_catalog, target_catalog),
+                        paired,
                         target_language=self._target_lang_code,
                     )
                 )
@@ -757,6 +811,12 @@ class UISessionMixin:
             en_ref = self.simple_en_ref_edit.text().strip()
         if not en_ref and hasattr(self, "en_ref_edit"):
             en_ref = self.en_ref_edit.text().strip()
+        # Collect current auto-translate log from panel
+        bulk_log: tuple[tuple[str, str, str], ...] = ()
+        if hasattr(self, "bulk_translate_panel") and self.bulk_translate_panel._populated:
+            bulk_log = tuple(self.bulk_translate_panel.log_entries)
+        elif hasattr(self, "_bulk_translate_log"):
+            bulk_log = tuple(self._bulk_translate_log)
         return TranslatorProject(
             source_install_dir=self.source_edit.text().strip(),
             target_install_dir=self.target_edit.text().strip(),
@@ -768,6 +828,7 @@ class UISessionMixin:
             paired_catalog=self._paired_catalog,
             dll_plans=tuple(self._dll_plans),
             en_ref_install_dir=en_ref,
+            bulk_translate_log=bulk_log,
         )
 
     def _reset_session_state(self) -> None:
@@ -778,6 +839,7 @@ class UISessionMixin:
         self._paired_catalog = None
         self._dll_plans = []
         self._visible_units = []
+        self._bulk_translate_log = []
         self._old_text_backup_dir = None
         self._old_text_lookup = {}
         self._mod_override_entries = []

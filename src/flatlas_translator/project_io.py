@@ -25,6 +25,7 @@ class TranslatorProject:
     paired_catalog: ResourceCatalog | None
     dll_plans: tuple[DllRelocalizationPlan, ...]
     en_ref_install_dir: str = ""
+    bulk_translate_log: tuple[tuple[str, str, str], ...] = ()
 
 
 def save_project(project: TranslatorProject, output_path: Path) -> Path:
@@ -55,6 +56,10 @@ def load_project(input_path: Path) -> TranslatorProject:
         paired_catalog=paired_catalog,
         dll_plans=dll_plans,
         en_ref_install_dir=str(payload.get("en_ref_install_dir", "") or ""),
+        bulk_translate_log=tuple(
+            tuple(entry) for entry in payload.get("bulk_translate_log", [])
+            if isinstance(entry, list) and len(entry) == 3
+        ),
     )
 
 
@@ -85,6 +90,7 @@ def _project_payload(project: TranslatorProject) -> dict[str, object]:
         "source_catalog": _catalog_to_dict(project.source_catalog),
         "target_catalog": _catalog_to_dict(project.target_catalog),
         "paired_catalog": _catalog_to_dict(project.paired_catalog),
+        "bulk_translate_log": [list(entry) for entry in project.bulk_translate_log],
     }
 
 

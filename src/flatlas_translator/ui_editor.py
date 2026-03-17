@@ -454,6 +454,9 @@ class UIEditorMixin:
             self._replace_current_catalog(cat)
             self._refresh_table()
             self._update_action_state()
+            # Persist log entries along with project
+            if hasattr(self, "bulk_translate_panel") and self.bulk_translate_panel._populated:
+                self._bulk_translate_log = list(self.bulk_translate_panel.log_entries)
             self._save_project_file()
 
         prev_log = getattr(self, "_bulk_translate_log", None) or []

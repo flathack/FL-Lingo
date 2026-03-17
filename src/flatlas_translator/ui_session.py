@@ -765,6 +765,28 @@ class UISessionMixin:
             # Merge manual edits from previous paired catalog
             if prev_edits:
                 paired_catalog = self._apply_manual_edits(paired_catalog, prev_edits)
+            # Detect translations already written to the DLL:
+            # If source_text (from DLL) matches manual_text (from project) the
+            # translation is live in the game -> mark as ALREADY_LOCALIZED.
+            applied: list[TranslationUnit] = []
+            for u in paired_catalog.units:
+                if (
+                    u.manual_text
+                    and u.translation_source != "terminology"
+                    and u.source_text.replace("\r\n", "\n")
+                    == u.manual_text.replace("\r\n", "\n")
+                ):
+                    applied.append(TranslationUnit(
+                        kind=u.kind, source=u.source, source_text=u.source_text,
+                        target=u.source, target_text=u.source_text,
+                    ))
+                else:
+                    applied.append(u)
+            paired_catalog = ResourceCatalog(
+                install_dir=paired_catalog.install_dir,
+                freelancer_ini=paired_catalog.freelancer_ini,
+                units=tuple(applied),
+            )
             self._target_catalog = None
             self._paired_catalog = apply_mod_overrides(
                 apply_known_term_suggestions(

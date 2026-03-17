@@ -536,6 +536,9 @@ class UISessionMixin:
         self._startup_last_project_path = Path(saved_project_path) if saved_project_path else None
         self._translator_api_key = str(self._settings.value("translator/api_key", "") or "").strip()
         self._translator_provider = str(self._settings.value("translator/provider", "google") or "google").strip()
+        from .translation_rules import TranslationRules, set_active_rules
+        self._translation_rules = TranslationRules.load(self._settings)
+        set_active_rules(self._translation_rules)
 
     def _save_persistent_settings(self) -> None:
         self._settings.setValue("ui/language", self._lang)
@@ -544,6 +547,8 @@ class UISessionMixin:
         self._settings.setValue("translation/source_language", self._source_lang_code)
         self._settings.setValue("translation/target_language", self._target_lang_code)
         self._settings.setValue("project/last_path", str(self._project_path) if self._project_path is not None else "")
+        if hasattr(self, "_translation_rules"):
+            self._translation_rules.save(self._settings)
 
     def _apply_theme(self) -> None:
         app = QApplication.instance()
@@ -600,6 +605,8 @@ class UISessionMixin:
         self._saved_project_signature = None
         self._old_text_lookup = {}
         self._invalidate_audio_progress_cache()
+        if hasattr(self, "_translation_rules"):
+            self._translation_rules.load_ship_name_ids(source_dir)
         self._apply_editor_default_filters(force=True)
         self._refresh_mod_override_entries()
         self._refresh_old_text_backup_options()

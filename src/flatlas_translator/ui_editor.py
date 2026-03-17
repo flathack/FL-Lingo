@@ -425,12 +425,16 @@ class UIEditorMixin:
             self._show_error(self._tr("error.translate_not_available"))
             return
         from .ui_dialogs import BulkTranslateDialog
+        from .terminology import is_unit_skippable
 
         include_terminology = getattr(self, 'include_terminology_check', None)
         if include_terminology is not None and include_terminology.isChecked():
-            open_units = [u for u in catalog.units if u.status in (RelocalizationStatus.MOD_ONLY, RelocalizationStatus.TERMINOLOGY_TRANSLATION)]
+            all_open_units = [u for u in catalog.units if u.status in (RelocalizationStatus.MOD_ONLY, RelocalizationStatus.TERMINOLOGY_TRANSLATION)]
         else:
-            open_units = [u for u in catalog.units if u.status == RelocalizationStatus.MOD_ONLY]
+            all_open_units = [u for u in catalog.units if u.status == RelocalizationStatus.MOD_ONLY]
+        total_before_skip = len(all_open_units)
+        open_units = [u for u in all_open_units if not is_unit_skippable(u)]
+        skipped_count = total_before_skip - len(open_units)
         if not open_units:
             self._set_status(self._tr("status.translate_all_open_done").format(count=0))
             return
@@ -463,6 +467,8 @@ class UIEditorMixin:
             units=open_units,
             save_progress_fn=save_progress,
             log_entries=prev_log,
+            skipped_count=skipped_count,
+            open_rules_callback=self._open_translation_rules_dialog,
             parent=self,
         )
         dlg.exec()

@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from .models import RelocalizationStatus, ResourceCatalog, TranslationUnit
+from .translation_rules import get_active_rules
 
 _DEFAULT_TERM_TRANSLATIONS: dict[str, str] = {
     "Bartender": "Barkeeper",
@@ -238,6 +239,9 @@ def _translate_line_with_terms(
 def is_unit_skippable(unit: TranslationUnit) -> bool:
     if unit.status != RelocalizationStatus.MOD_ONLY:
         return False
+    rules = get_active_rules()
+    if rules.skip_ship_names and rules.is_ship_name_id(unit.source.global_id):
+        return True
     lines = _split_lines(unit.source_text)
     if not lines:
         return False
@@ -248,11 +252,12 @@ def is_line_non_translatable(text: str) -> bool:
     normalized = _normalize_text(text)
     if not normalized:
         return False
-    if _SYMBOLIC_OR_NUMERIC_LINE_RE.fullmatch(normalized):
+    rules = get_active_rules()
+    if rules.skip_symbolic_numeric and _SYMBOLIC_OR_NUMERIC_LINE_RE.fullmatch(normalized):
         return True
-    if _has_location_keyword(normalized):
+    if rules.skip_location_keywords and _has_location_keyword(normalized):
         return True
-    if _looks_like_person_name(normalized):
+    if rules.skip_person_names and _looks_like_person_name(normalized):
         return True
     return False
 
@@ -294,7 +299,8 @@ def _is_term_candidate(source_text: str, target_text: str) -> bool:
         return False
     if "<" in source_text or "<" in target_text:
         return False
-    if len(source_text) > 80 or len(target_text) > 80:
+    max_len = get_active_rules().term_candidate_max_length
+    if len(source_text) > max_len or len(target_text) > max_len:
         return False
     return True
 
@@ -523,8 +529,8 @@ def _translate_prose_text(
     patterns: list[ReplacementPattern],
 ) -> str:
     translated = str(text)
-    translated = _apply_pattern_replacements(translated, patterns, exact_only=False, minimum_source_length=20)
-    translated = _apply_term_replacements(translated, term_map, allow_single_word_terms=False)
+    translated = _apply_pattern_replacements(translated, patterns, exact_only=False, minimum_source_length=get_active_rules().pattern_min_source_length)
+    translated = _apply_term_replacements(translated, term_map, allow_single_word_terms=not get_active_rules().skip_single_word_terms_in_prose)
     return translated
 
 

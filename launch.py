@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false")
+os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false;qt.qpa.fonts=false")
 
 
 APP_VERSION = "0.1.3"

@@ -9,10 +9,12 @@ import time
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -116,6 +118,101 @@ class TranslatorSettingsDialog(QDialog):
         self.accept()
 
 
+class TranslationRulesDialog(QDialog):
+    """Dialog for configuring translation skip/filter rules."""
+
+    def __init__(
+        self,
+        rules: "TranslationRules",
+        tr: Callable[[str], str],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        from .translation_rules import TranslationRules as _TR  # noqa: F811
+        self._tr = tr
+        self.setWindowTitle(tr("rules.dialog_title"))
+        self.setMinimumWidth(560)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+
+        layout = QVBoxLayout(self)
+
+        # --- Skip rules ---
+        skip_group = QGroupBox(tr("rules.group_skip"))
+        skip_layout = QVBoxLayout(skip_group)
+
+        self.skip_location_check = QCheckBox(tr("rules.skip_location_keywords"))
+        self.skip_location_check.setChecked(rules.skip_location_keywords)
+        skip_layout.addWidget(self.skip_location_check)
+
+        self.skip_person_check = QCheckBox(tr("rules.skip_person_names"))
+        self.skip_person_check.setChecked(rules.skip_person_names)
+        skip_layout.addWidget(self.skip_person_check)
+
+        self.skip_symbolic_check = QCheckBox(tr("rules.skip_symbolic_numeric"))
+        self.skip_symbolic_check.setChecked(rules.skip_symbolic_numeric)
+        skip_layout.addWidget(self.skip_symbolic_check)
+
+        self.skip_ships_check = QCheckBox(tr("rules.skip_ship_names"))
+        self.skip_ships_check.setChecked(rules.skip_ship_names)
+        skip_layout.addWidget(self.skip_ships_check)
+
+        layout.addWidget(skip_group)
+
+        # --- Term rules ---
+        term_group = QGroupBox(tr("rules.group_terms"))
+        term_layout = QVBoxLayout(term_group)
+
+        self.skip_single_word_check = QCheckBox(tr("rules.skip_single_word_prose"))
+        self.skip_single_word_check.setChecked(rules.skip_single_word_terms_in_prose)
+        term_layout.addWidget(self.skip_single_word_check)
+
+        term_grid = QGridLayout()
+        term_grid.addWidget(QLabel(tr("rules.term_max_length")), 0, 0)
+        self.term_max_spin = QSpinBox()
+        self.term_max_spin.setRange(1, 9999)
+        self.term_max_spin.setValue(rules.term_candidate_max_length)
+        term_grid.addWidget(self.term_max_spin, 0, 1)
+
+        term_grid.addWidget(QLabel(tr("rules.pattern_min_length")), 1, 0)
+        self.pattern_min_spin = QSpinBox()
+        self.pattern_min_spin.setRange(0, 9999)
+        self.pattern_min_spin.setValue(rules.pattern_min_source_length)
+        term_grid.addWidget(self.pattern_min_spin, 1, 1)
+
+        term_layout.addLayout(term_grid)
+        layout.addWidget(term_group)
+
+        # --- Info (non-configurable rules) ---
+        info_group = QGroupBox(tr("rules.group_info"))
+        info_layout = QVBoxLayout(info_group)
+        info_label = QLabel(tr("rules.info_text"))
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #8b95a7;")
+        info_layout.addWidget(info_label)
+        layout.addWidget(info_group)
+
+        # --- buttons ---
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.result_rules: _TR | None = None
+
+    def _accept(self) -> None:
+        from .translation_rules import TranslationRules
+        self.result_rules = TranslationRules(
+            skip_location_keywords=self.skip_location_check.isChecked(),
+            skip_person_names=self.skip_person_check.isChecked(),
+            skip_symbolic_numeric=self.skip_symbolic_check.isChecked(),
+            skip_ship_names=self.skip_ships_check.isChecked(),
+            skip_single_word_terms_in_prose=self.skip_single_word_check.isChecked(),
+            term_candidate_max_length=self.term_max_spin.value(),
+            pattern_min_source_length=self.pattern_min_spin.value(),
+        )
+        self.accept()
+
+
 class BulkTranslateDialog(QDialog):
     """Modal dialog for bulk auto-translation with pause/resume and progress."""
 
@@ -129,6 +226,8 @@ class BulkTranslateDialog(QDialog):
         units: list[Any],
         save_progress_fn: Callable[[list[Any]], None],
         log_entries: list[tuple[str, str, str]] | None = None,
+        skipped_count: int = 0,
+        open_rules_callback: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -169,6 +268,25 @@ class BulkTranslateDialog(QDialog):
         self.info_label = QLabel(info_text)
         self.info_label.setWordWrap(True)
         layout.addWidget(self.info_label)
+
+        # --- skip / available info + rules link ---
+        skip_row = QHBoxLayout()
+        skip_info_parts: list[str] = []
+        if skipped_count > 0:
+            skip_info_parts.append(tr("dialog.bulk_skipped").format(skipped=skipped_count))
+        skip_info_parts.append(tr("dialog.bulk_available").format(available=total_open))
+        skip_info_label = QLabel("  ".join(skip_info_parts))
+        skip_info_label.setStyleSheet("color: #8b95a7;")
+        skip_row.addWidget(skip_info_label)
+        if open_rules_callback is not None:
+            rules_link = QPushButton(tr("dialog.bulk_open_rules"))
+            rules_link.setFlat(True)
+            rules_link.setCursor(Qt.PointingHandCursor)
+            rules_link.setStyleSheet("color: #3daee9; text-decoration: underline; border: none; padding: 0;")
+            rules_link.clicked.connect(lambda: open_rules_callback())
+            skip_row.addWidget(rules_link)
+        skip_row.addStretch(1)
+        layout.addLayout(skip_row)
 
         # --- progress ---
         self.progress_bar = QProgressBar()

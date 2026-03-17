@@ -710,6 +710,28 @@ class UIWorkflowMixin:
         self._retranslate_ui()
         self._set_status(self._tr("status.settings_applied"))
 
+    def _open_translation_rules_dialog(self) -> None:
+        from .ui_dialogs import TranslationRulesDialog
+        from .translation_rules import set_active_rules
+
+        rules = getattr(self, "_translation_rules", None)
+        if rules is None:
+            from .translation_rules import TranslationRules
+            rules = TranslationRules()
+        dlg = TranslationRulesDialog(rules, self._tr, parent=self)
+        if dlg.exec() != QDialog.Accepted or dlg.result_rules is None:
+            return
+        self._translation_rules = dlg.result_rules
+        # Reload ship names with current source path
+        source_path = self.source_edit.text().strip() if hasattr(self, "source_edit") else ""
+        if source_path:
+            self._translation_rules.load_ship_name_ids(Path(source_path))
+        set_active_rules(self._translation_rules)
+        self._save_persistent_settings()
+        self._refresh_table()
+        self._update_action_state()
+        self._set_status(self._tr("status.settings_applied"))
+
     def _set_language(self, language_code: str) -> None:
         new_lang = str(language_code or "").strip().lower()
         if new_lang == self._lang:

@@ -185,6 +185,10 @@ class UIBuildMixin:
         act_translator_settings.triggered.connect(self._open_translator_settings)
         settings_menu.addAction(act_translator_settings)
 
+        act_translation_rules = QAction(self._tr("menuitem.translation_rules"), self)
+        act_translation_rules.triggered.connect(self._open_translation_rules_dialog)
+        settings_menu.addAction(act_translation_rules)
+
         self._language_actions: dict[str, QAction] = {}
         for code, label in LANGUAGE_OPTIONS:
             act_language = QAction(f"{code} - {label}", self)

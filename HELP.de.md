@@ -1,6 +1,6 @@
 # FL Lingo — Hilfe
 
-**Version:** 0.1.1  
+**Version:** 0.1.3
 **Entwickelt von:** Aldenmar Odin — flathack  
 **GitHub:** [github.com/flathack/FL-Lingo](https://github.com/flathack/FL-Lingo)  
 **Discord:** [discord.com/invite/RENtMMcc](https://discord.com/invite/RENtMMcc)

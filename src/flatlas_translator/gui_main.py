@@ -13,7 +13,7 @@ except ImportError:
 @dataclass(frozen=True, slots=True)
 class AppConfig:
     app_title: str = "FL Lingo"
-    app_version: str = "0.1.0"
+    app_version: str = "0.1.3"
     developed_by: str = "Developed by Aldenmar Odin - flathack"
     default_language: str = "en"
     default_theme: str = "dark"

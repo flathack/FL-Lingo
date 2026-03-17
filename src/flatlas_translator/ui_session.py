@@ -768,13 +768,15 @@ class UISessionMixin:
             # Detect translations already written to the DLL:
             # If source_text (from DLL) matches manual_text (from project) the
             # translation is live in the game -> mark as ALREADY_LOCALIZED.
+            def _norm(t: str) -> str:
+                return t.replace("\r\n", "\n").replace("\r", "\n").strip()
+
             applied: list[TranslationUnit] = []
             for u in paired_catalog.units:
                 if (
                     u.manual_text
                     and u.translation_source != "terminology"
-                    and u.source_text.replace("\r\n", "\n")
-                    == u.manual_text.replace("\r\n", "\n")
+                    and _norm(u.source_text) == _norm(u.manual_text)
                 ):
                     applied.append(TranslationUnit(
                         kind=u.kind, source=u.source, source_text=u.source_text,

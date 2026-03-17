@@ -9,7 +9,7 @@ from .mod_overrides import ModOverrideEntry, delete_mod_override, save_mod_overr
 from .models import RelocalizationStatus, ResourceCatalog, ResourceKind, TranslationUnit
 from .stats import summarize_catalog
 from .terminology import list_pattern_entries, list_terminology_entries, save_replacement_pattern, save_term_mapping
-from .translation_exchange import update_manual_translation
+from .translation_exchange import batch_update_manual_translations, update_manual_translation
 
 
 class UIEditorMixin:
@@ -428,12 +428,32 @@ class UIEditorMixin:
 
         include_terminology = getattr(self, 'include_terminology_check', None)
         if include_terminology is not None and include_terminology.isChecked():
-            all_open_units = [u for u in catalog.units if u.status in (RelocalizationStatus.MOD_ONLY, RelocalizationStatus.TERMINOLOGY_TRANSLATION)]
+            target_statuses = (RelocalizationStatus.MOD_ONLY, RelocalizationStatus.TERMINOLOGY_TRANSLATION)
         else:
-            all_open_units = [u for u in catalog.units if u.status == RelocalizationStatus.MOD_ONLY]
-        total_before_skip = len(all_open_units)
-        open_units = [u for u in all_open_units if not is_unit_skippable(u)]
-        skipped_count = total_before_skip - len(open_units)
+            target_statuses = (RelocalizationStatus.MOD_ONLY,)
+
+        # Switch to tab immediately so user sees progress
+        self.main_mode_tabs.setCurrentIndex(2)
+
+        # Run expensive filtering in background
+        result_holder: dict = {}
+
+        def _filter_units() -> None:
+            all_open = [u for u in catalog.units if u.status in target_statuses]
+            total_before = len(all_open)
+            filtered = [u for u in all_open if not is_unit_skippable(u)]
+            result_holder['all_open'] = all_open
+            result_holder['filtered'] = filtered
+            result_holder['total_before'] = total_before
+
+        self._run_with_progress(
+            self._tr("dialog.progress_title"),
+            self._tr("progress.compare"),
+            _filter_units,
+        )
+
+        open_units = result_holder['filtered']
+        skipped_count = result_holder['total_before'] - len(open_units)
         if not open_units:
             self._set_status(self._tr("status.translate_all_open_done").format(count=0))
             return
@@ -442,16 +462,23 @@ class UIEditorMixin:
             cat = self._current_catalog()
             if cat is None:
                 return
-            for unit, text in translated_pairs:
-                cat = update_manual_translation(
-                    cat,
-                    kind=str(unit.kind),
-                    dll_name=unit.source.dll_name,
-                    local_id=unit.source.local_id,
-                    manual_text=text,
-                    translation_source="auto_translate",
+
+            # Heavy catalog rebuild in background (single-pass O(n+m))
+            result_holder: list[ResourceCatalog] = []
+
+            def _do_batch_update() -> None:
+                result_holder.append(
+                    batch_update_manual_translations(cat, translated_pairs, translation_source="auto_translate")
                 )
-            self._replace_current_catalog(cat)
+
+            self._run_with_progress(
+                self._tr("dialog.progress_title"),
+                self._tr("progress.save_project"),
+                _do_batch_update,
+            )
+
+            if result_holder:
+                self._replace_current_catalog(result_holder[0])
             self._refresh_table()
             self._update_action_state()
             # Persist log entries along with project

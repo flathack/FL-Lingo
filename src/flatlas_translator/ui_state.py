@@ -383,6 +383,10 @@ class UIStateMixin:
             self.simple_auto_translate_button.setEnabled(has_catalog and not self._apply_active)
         if hasattr(self, "bulk_translate_panel"):
             self.main_mode_tabs.setTabVisible(2, has_catalog)
+            # Restore previous auto-translate log entries from project
+            bulk_log = getattr(self, "_bulk_translate_log", None)
+            if bulk_log and not self.bulk_translate_panel._populated:
+                self.bulk_translate_panel.restore_log(bulk_log)
         self._refresh_simple_mode()
 
     def _populate_dll_filter(self, catalog: ResourceCatalog | None) -> None:

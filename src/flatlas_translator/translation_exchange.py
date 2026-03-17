@@ -212,6 +212,42 @@ def update_manual_translation(
     )
 
 
+def batch_update_manual_translations(
+    catalog: ResourceCatalog,
+    pairs: list[tuple],
+    translation_source: str = "",
+) -> ResourceCatalog:
+    """Apply many manual-text updates in a single O(n+m) pass."""
+    updates: dict[tuple[str, str, int], str] = {}
+    for unit, text in pairs:
+        key = (str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id))
+        updates[key] = str(text or "").replace("\r\n", "\n")
+
+    merged_units: list[TranslationUnit] = []
+    for unit in catalog.units:
+        key = _unit_key(unit)
+        if key in updates:
+            mt = updates[key]
+            merged_units.append(
+                TranslationUnit(
+                    kind=unit.kind,
+                    source=unit.source,
+                    source_text=unit.source_text,
+                    target=unit.target,
+                    target_text=unit.target_text,
+                    manual_text=mt,
+                    translation_source=translation_source if mt else "",
+                )
+            )
+        else:
+            merged_units.append(unit)
+    return ResourceCatalog(
+        install_dir=catalog.install_dir,
+        freelancer_ini=catalog.freelancer_ini,
+        units=tuple(merged_units),
+    )
+
+
 def _unit_key(unit: TranslationUnit) -> tuple[str, str, int]:
     return (str(unit.kind), unit.source.dll_name.lower(), int(unit.source.local_id))
 

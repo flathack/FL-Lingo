@@ -485,7 +485,10 @@ class UISessionMixin:
                         pass
         self._auto_translate_all = False
         self._load_source_catalog()
-        self._load_compare_catalog()
+        if self._is_no_reference_mode():
+            self._load_source_only_as_paired()
+        else:
+            self._load_compare_catalog()
 
     def _handle_apply_progress_event(self, event: Any) -> None:
         if not isinstance(event, dict):
@@ -730,6 +733,10 @@ class UISessionMixin:
 
     def _load_source_only_as_paired(self) -> None:
         """Load only the source installation and treat all entries as MOD_ONLY (no reference needed)."""
+        # Collect manual edits from paired/source BEFORE any rebuild
+        prev_edits = self._collect_manual_edits(self._paired_catalog)
+        prev_edits.update(self._collect_manual_edits(self._source_catalog))
+
         if self._source_catalog is None:
             self._load_source_catalog()
             if self._source_catalog is None:
@@ -750,14 +757,18 @@ class UISessionMixin:
                 )
                 for u in self._source_catalog.units
             )
+            paired_catalog = ResourceCatalog(
+                install_dir=self._source_catalog.install_dir,
+                freelancer_ini=self._source_catalog.freelancer_ini,
+                units=paired_units,
+            )
+            # Merge manual edits from previous paired catalog
+            if prev_edits:
+                paired_catalog = self._apply_manual_edits(paired_catalog, prev_edits)
             self._target_catalog = None
             self._paired_catalog = apply_mod_overrides(
                 apply_known_term_suggestions(
-                    ResourceCatalog(
-                        install_dir=self._source_catalog.install_dir,
-                        freelancer_ini=self._source_catalog.freelancer_ini,
-                        units=paired_units,
-                    ),
+                    paired_catalog,
                     target_language=self._target_lang_code,
                 )
             )

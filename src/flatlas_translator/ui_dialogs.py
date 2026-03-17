@@ -377,14 +377,29 @@ class BulkTranslatePanel(QWidget):
         self.status_label.setText("")
 
         self.result_table.setRowCount(0)
+        self.result_table.setUpdatesEnabled(False)
         for ref, old, new in self._log_entries:
-            self._append_table_row(ref, old, new)
+            self._insert_table_row(ref, old, new)
+        self.result_table.setUpdatesEnabled(True)
+        if self._log_entries:
+            self.result_table.scrollToBottom()
 
         self.preview_button.setEnabled(True)
         self.start_button.setEnabled(True)
         self.pause_button.setEnabled(False)
         self.min_length_spin.setEnabled(True)
         self._populated = True
+
+    def restore_log(self, log_entries: list[tuple[str, str, str]]) -> None:
+        """Restore previous log entries into the table without a full populate."""
+        self._log_entries = list(log_entries)
+        self.result_table.setRowCount(0)
+        self.result_table.setUpdatesEnabled(False)
+        for ref, old, new in self._log_entries:
+            self._insert_table_row(ref, old, new)
+        self.result_table.setUpdatesEnabled(True)
+        if self._log_entries:
+            self.result_table.scrollToBottom()
 
     def _on_rules_clicked(self) -> None:
         if self._open_rules_callback is not None:

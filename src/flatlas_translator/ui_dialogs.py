@@ -215,35 +215,27 @@ class TranslationRulesDialog(QDialog):
         self.accept()
 
 
-class BulkTranslateDialog(QDialog):
-    """Modal dialog for bulk auto-translation with pause/resume and progress."""
+class BulkTranslatePanel(QWidget):
+    """Embeddable panel for bulk auto-translation with pause/resume and progress."""
 
     def __init__(
         self,
-        total_open: int,
         tr: Callable[[str], str],
-        translate_fn: Callable[[str, str, str], str],
-        source_lang: str,
-        target_lang: str,
-        units: list[Any],
-        save_progress_fn: Callable[[list[Any]], None],
-        log_entries: list[tuple[str, str, str]] | None = None,
-        skipped_count: int = 0,
-        open_rules_callback: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._tr = tr
-        self._translate_fn = translate_fn
-        self._source_lang = source_lang
-        self._target_lang = target_lang
-        self._units = units
-        self._save_progress_fn = save_progress_fn
+        self._translate_fn: Callable[[str, str, str], str] | None = None
+        self._source_lang = ""
+        self._target_lang = ""
+        self._units: list[Any] = []
+        self._save_progress_fn: Callable[[list[Any]], None] | None = None
+        self._open_rules_callback: Callable[[], None] | None = None
         self._paused = True
         self._done = 0
         self._current_index = 0
         self._translated_units: list[Any] = []
-        self._log_entries: list[tuple[str, str, str]] = list(log_entries) if log_entries else []
+        self._log_entries: list[tuple[str, str, str]] = []
         self._translate_times: list[float] = []
         self._result_queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
@@ -252,10 +244,7 @@ class BulkTranslateDialog(QDialog):
         self._timer = QTimer(self)
         self._timer.setInterval(50)
         self._timer.timeout.connect(self._poll_results)
-
-        self.setWindowTitle(tr("dialog.bulk_translate_title"))
-        self.setMinimumSize(720, 480)
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        self._populated = False
 
         layout = QVBoxLayout(self)
 
@@ -270,40 +259,35 @@ class BulkTranslateDialog(QDialog):
         config_row.addStretch(1)
         layout.addLayout(config_row)
 
-        info_text = tr("dialog.bulk_info").format(count=total_open)
-        self.info_label = QLabel(info_text)
+        self.info_label = QLabel("")
         self.info_label.setWordWrap(True)
         layout.addWidget(self.info_label)
 
         # --- skip / available info + rules link ---
-        skip_row = QHBoxLayout()
-        skip_info_parts: list[str] = []
-        if skipped_count > 0:
-            skip_info_parts.append(tr("dialog.bulk_skipped").format(skipped=skipped_count))
-        skip_info_parts.append(tr("dialog.bulk_available").format(available=total_open))
-        skip_info_label = QLabel("  ".join(skip_info_parts))
-        skip_info_label.setStyleSheet("color: #8b95a7;")
-        skip_row.addWidget(skip_info_label)
-        if open_rules_callback is not None:
-            rules_link = QPushButton(tr("dialog.bulk_open_rules"))
-            rules_link.setFlat(True)
-            rules_link.setCursor(Qt.PointingHandCursor)
-            rules_link.setStyleSheet("color: #3daee9; text-decoration: underline; border: none; padding: 0;")
-            rules_link.clicked.connect(lambda: open_rules_callback())
-            skip_row.addWidget(rules_link)
-        skip_row.addStretch(1)
-        layout.addLayout(skip_row)
+        self._skip_row = QHBoxLayout()
+        self.skip_info_label = QLabel("")
+        self.skip_info_label.setStyleSheet("color: #8b95a7;")
+        self._skip_row.addWidget(self.skip_info_label)
+        self.rules_link = QPushButton(tr("dialog.bulk_open_rules"))
+        self.rules_link.setFlat(True)
+        self.rules_link.setCursor(Qt.PointingHandCursor)
+        self.rules_link.setStyleSheet("color: #3daee9; text-decoration: underline; border: none; padding: 0;")
+        self.rules_link.clicked.connect(self._on_rules_clicked)
+        self.rules_link.setVisible(False)
+        self._skip_row.addWidget(self.rules_link)
+        self._skip_row.addStretch(1)
+        layout.addLayout(self._skip_row)
 
         # --- progress ---
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setMaximum(total_open)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        layout.addWidget(self.progress_bar)
+        self.bulk_progress_bar = QProgressBar()
+        self.bulk_progress_bar.setMinimum(0)
+        self.bulk_progress_bar.setMaximum(1)
+        self.bulk_progress_bar.setValue(0)
+        self.bulk_progress_bar.setTextVisible(True)
+        layout.addWidget(self.bulk_progress_bar)
 
-        self.progress_label = QLabel(tr("dialog.bulk_progress").format(done=0, total=total_open))
-        layout.addWidget(self.progress_label)
+        self.bulk_progress_label = QLabel("")
+        layout.addWidget(self.bulk_progress_label)
 
         self.eta_label = QLabel("")
         self.eta_label.setStyleSheet("color: #8b95a7;")
@@ -326,10 +310,6 @@ class BulkTranslateDialog(QDialog):
         self.result_table.verticalHeader().setVisible(False)
         layout.addWidget(self.result_table, 1)
 
-        # Restore previous log entries
-        for ref, old, new in self._log_entries:
-            self._append_table_row(ref, old, new)
-
         # --- status label (for pause/finish messages) ---
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
@@ -344,14 +324,71 @@ class BulkTranslateDialog(QDialog):
         self.pause_button = QPushButton(tr("dialog.bulk_pause"))
         self.pause_button.clicked.connect(self._on_pause)
         self.pause_button.setEnabled(False)
-        self.close_button = QPushButton(tr("dialog.bulk_close"))
-        self.close_button.clicked.connect(self._on_close)
         btn_row.addStretch(1)
         btn_row.addWidget(self.preview_button)
         btn_row.addWidget(self.start_button)
         btn_row.addWidget(self.pause_button)
-        btn_row.addWidget(self.close_button)
         layout.addLayout(btn_row)
+
+        # Disable actions until populated
+        self.preview_button.setEnabled(False)
+        self.start_button.setEnabled(False)
+
+    def populate(
+        self,
+        total_open: int,
+        translate_fn: Callable[[str, str, str], str],
+        source_lang: str,
+        target_lang: str,
+        units: list[Any],
+        save_progress_fn: Callable[[list[Any]], None],
+        log_entries: list[tuple[str, str, str]] | None = None,
+        skipped_count: int = 0,
+        open_rules_callback: Callable[[], None] | None = None,
+    ) -> None:
+        """Load new data into the panel and reset state."""
+        self.stop_and_save()
+        self._translate_fn = translate_fn
+        self._source_lang = source_lang
+        self._target_lang = target_lang
+        self._units = units
+        self._save_progress_fn = save_progress_fn
+        self._open_rules_callback = open_rules_callback
+        self._paused = True
+        self._done = 0
+        self._current_index = 0
+        self._translated_units = []
+        self._log_entries = list(log_entries) if log_entries else []
+        self._translate_times = []
+
+        self.info_label.setText(self._tr("dialog.bulk_info").format(count=total_open))
+
+        skip_info_parts: list[str] = []
+        if skipped_count > 0:
+            skip_info_parts.append(self._tr("dialog.bulk_skipped").format(skipped=skipped_count))
+        skip_info_parts.append(self._tr("dialog.bulk_available").format(available=total_open))
+        self.skip_info_label.setText("  ".join(skip_info_parts))
+        self.rules_link.setVisible(open_rules_callback is not None)
+
+        self.bulk_progress_bar.setMaximum(max(total_open, 1))
+        self.bulk_progress_bar.setValue(0)
+        self.bulk_progress_label.setText(self._tr("dialog.bulk_progress").format(done=0, total=total_open))
+        self.eta_label.setText("")
+        self.status_label.setText("")
+
+        self.result_table.setRowCount(0)
+        for ref, old, new in self._log_entries:
+            self._append_table_row(ref, old, new)
+
+        self.preview_button.setEnabled(True)
+        self.start_button.setEnabled(True)
+        self.pause_button.setEnabled(False)
+        self.min_length_spin.setEnabled(True)
+        self._populated = True
+
+    def _on_rules_clicked(self) -> None:
+        if self._open_rules_callback is not None:
+            self._open_rules_callback()
 
     # --- helpers ---
 
@@ -383,8 +420,8 @@ class BulkTranslateDialog(QDialog):
         min_len = self.min_length_spin.value()
         total = len(units)
         self.result_table.setRowCount(0)
-        self.progress_bar.setMaximum(max(total, 1))
-        self.progress_bar.setValue(0)
+        self.bulk_progress_bar.setMaximum(max(total, 1))
+        self.bulk_progress_bar.setValue(0)
         self.eta_label.setText("")
         self.preview_button.setEnabled(False)
         self.start_button.setEnabled(False)
@@ -431,7 +468,7 @@ class BulkTranslateDialog(QDialog):
                 src_item.setToolTip(source_text)
                 self.result_table.setItem(row, 1, src_item)
                 self.result_table.setItem(row, 2, QTableWidgetItem(""))
-                self.progress_bar.setValue(i + 1)
+                self.bulk_progress_bar.setValue(i + 1)
                 batch += 1
 
         self.result_table.setUpdatesEnabled(False)
@@ -451,9 +488,9 @@ class BulkTranslateDialog(QDialog):
         self._done = 0
         self._translate_times = []
         total = len(units)
-        self.progress_bar.setMaximum(total)
-        self.progress_bar.setValue(0)
-        self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=0, total=total))
+        self.bulk_progress_bar.setMaximum(total)
+        self.bulk_progress_bar.setValue(0)
+        self.bulk_progress_label.setText(self._tr("dialog.bulk_progress").format(done=0, total=total))
         self.eta_label.setText("")
         self.start_button.setEnabled(False)
         self.preview_button.setEnabled(False)
@@ -518,8 +555,8 @@ class BulkTranslateDialog(QDialog):
                 return
             self._current_index = idx + 1
             if status == "skip":
-                self.progress_bar.setValue(self._current_index)
-                self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
+                self.bulk_progress_bar.setValue(self._current_index)
+                self.bulk_progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
                 continue
             self._translate_times.append(elapsed)
             if status == "ok":
@@ -530,8 +567,8 @@ class BulkTranslateDialog(QDialog):
                 entry = (ref, source_text, f"\u274c {result_text}")
             self._log_entries.append(entry)
             self._append_table_row(*entry)
-            self.progress_bar.setValue(self._current_index)
-            self.progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
+            self.bulk_progress_bar.setValue(self._current_index)
+            self.bulk_progress_label.setText(self._tr("dialog.bulk_progress").format(done=self._done, total=total))
             self._update_eta()
 
     def _on_pause(self) -> None:
@@ -554,11 +591,11 @@ class BulkTranslateDialog(QDialog):
             self._save_progress_fn(self._translated_units)
             self.status_label.setText(self._tr("dialog.bulk_saved"))
 
-    def _on_close(self) -> None:
+    def stop_and_save(self) -> None:
+        """Stop any running translation and save progress."""
         self._stop_translation()
-        if self._translated_units:
+        if self._translated_units and self._save_progress_fn is not None:
             self._save_progress_fn(self._translated_units)
-        self.accept()
 
     def _stop_translation(self) -> None:
         """Signal worker thread to stop and wait for it."""
@@ -592,8 +629,4 @@ class BulkTranslateDialog(QDialog):
         eta_seconds = avg_time * remaining
         self.eta_label.setText(self._format_eta(eta_seconds))
 
-    def closeEvent(self, event) -> None:  # noqa: N802
-        self._stop_translation()
-        if self._translated_units:
-            self._save_progress_fn(self._translated_units)
-        super().closeEvent(event)
+

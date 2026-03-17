@@ -175,8 +175,9 @@ class UIStateMixin:
         self._refresh_simple_mode()
 
     def _on_mode_tab_changed(self, index: int) -> None:
-        self._ui_mode = "simple" if index == 0 else "expert"
-        self._save_persistent_settings()
+        if index <= 1:
+            self._ui_mode = "simple" if index == 0 else "expert"
+            self._save_persistent_settings()
         self._refresh_simple_mode()
 
     def _set_ui_mode(self, mode: str, *, save: bool = True) -> None:
@@ -380,6 +381,8 @@ class UIStateMixin:
             self.simple_translate_button.setToolTip(apply_tooltip)
         if hasattr(self, "simple_auto_translate_button"):
             self.simple_auto_translate_button.setEnabled(has_catalog and not self._apply_active)
+        if hasattr(self, "bulk_translate_panel"):
+            self.main_mode_tabs.setTabVisible(2, has_catalog)
         self._refresh_simple_mode()
 
     def _populate_dll_filter(self, catalog: ResourceCatalog | None) -> None:

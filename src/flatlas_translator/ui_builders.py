@@ -535,6 +535,8 @@ class UIBuildMixin:
         return self.dll_group
 
     def _build_main_navigation(self) -> QWidget:
+        from .ui_dialogs import BulkTranslatePanel
+
         self.main_mode_tabs = QTabWidget()
         self.main_mode_tabs.setDocumentMode(True)
         self.main_mode_tabs.tabBar().setExpanding(True)
@@ -549,6 +551,10 @@ class UIBuildMixin:
         self.root_tabs.addTab(self._build_troubleshoot_page(), self._tr("tab.troubleshoot"))
         expert_layout.addWidget(self.root_tabs)
         self.main_mode_tabs.addTab(expert_container, self._tr("mode.expert"))
+
+        self.bulk_translate_panel = BulkTranslatePanel(tr=self._tr)
+        self.main_mode_tabs.addTab(self.bulk_translate_panel, self._tr("mode.bulk_translate"))
+        self.main_mode_tabs.setTabVisible(2, False)
 
         self.main_mode_tabs.currentChanged.connect(self._on_mode_tab_changed)
         self._apply_ui_mode(save=False)

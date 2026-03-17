@@ -26,6 +26,7 @@ class UIChromeMixin:
         self.simple_translate_group.setTitle(self._tr("simple.group.translate"))
         self.main_mode_tabs.setTabText(0, self._tr("mode.simple"))
         self.main_mode_tabs.setTabText(1, self._tr("mode.expert"))
+        self.main_mode_tabs.setTabText(2, self._tr("mode.bulk_translate"))
         self.simple_paths_help_label.setText(self._tr("simple.paths.help.no_ref"))
         self.simple_scan_help_label.setText(self._tr("simple.scan.help.no_ref"))
         self.simple_translate_help_label.setText(self._tr("simple.translate.help.no_ref"))

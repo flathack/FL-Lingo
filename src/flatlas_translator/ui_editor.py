@@ -414,7 +414,7 @@ class UIEditorMixin:
         self._set_status(self._tr("status.translate_entry_done"))
 
     def _translate_all_open_entries(self) -> None:
-        """Open bulk-translate dialog for all open entries."""
+        """Populate the bulk-translate tab and switch to it."""
         catalog = self._current_catalog()
         if catalog is None:
             self._show_error(self._tr("error.load_first"))
@@ -424,7 +424,6 @@ class UIEditorMixin:
         except ImportError:
             self._show_error(self._tr("error.translate_not_available"))
             return
-        from .ui_dialogs import BulkTranslateDialog
         from .terminology import is_unit_skippable
 
         include_terminology = getattr(self, 'include_terminology_check', None)
@@ -458,9 +457,11 @@ class UIEditorMixin:
             self._save_project_file()
 
         prev_log = getattr(self, "_bulk_translate_log", None) or []
-        dlg = BulkTranslateDialog(
+        # Read any log entries accumulated in the panel from a previous session
+        if hasattr(self, "bulk_translate_panel") and self.bulk_translate_panel._populated:
+            prev_log = self.bulk_translate_panel.log_entries
+        self.bulk_translate_panel.populate(
             total_open=len(open_units),
-            tr=self._tr,
             translate_fn=translate_text,
             source_lang=self._source_lang_code,
             target_lang=self._target_lang_code,
@@ -469,11 +470,8 @@ class UIEditorMixin:
             log_entries=prev_log,
             skipped_count=skipped_count,
             open_rules_callback=self._open_translation_rules_dialog,
-            parent=self,
         )
-        dlg.exec()
-        self._bulk_translate_log = dlg.log_entries
-        self._set_status(self._tr("status.translate_all_open_done").format(count=dlg._done))
+        self.main_mode_tabs.setCurrentIndex(2)
 
     def _open_translator_settings(self) -> None:
         """Show dialog for translator provider selection and API key."""

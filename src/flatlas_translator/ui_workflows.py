@@ -1284,6 +1284,102 @@ class UIWorkflowMixin:
             self._tr("troubleshoot.fix_xml.repair_done").format(count=total_fixed)
         )
 
+    # ------------------------------------------------------------------
+    # Troubleshooting: Fix Translated XML Attributes  (2-step workflow)
+    # ------------------------------------------------------------------
+
+    def _run_fix_attrs_scan(self) -> None:
+        """Step 1 – scan DLLs for translated XML attribute names."""
+        source_dir = self.source_edit.text().strip() if hasattr(self, "source_edit") else ""
+        initial_dir = str(Path(source_dir) / "EXE") if source_dir and Path(source_dir).is_dir() else ""
+        exe_dir = QFileDialog.getExistingDirectory(
+            self,
+            self._tr("troubleshoot.fix_attrs.select_dir"),
+            initial_dir,
+        )
+        if not exe_dir:
+            return
+
+        exe_path = Path(exe_dir)
+        self.fix_attrs_scan_result_label.setText(self._tr("troubleshoot.fix_attrs.scan_running"))
+        self.fix_attrs_repair_button.setEnabled(False)
+        self.fix_attrs_result_label.setText("")
+        QApplication.processEvents()
+
+        try:
+            scan_results = self._writer.scan_translated_xml_attrs(exe_path)
+        except Exception as exc:
+            self.fix_attrs_scan_result_label.setText(
+                self._tr("troubleshoot.fix_attrs.scan_error").format(error=str(exc))
+            )
+            self._set_status(self._tr("status.operation_failed"))
+            return
+
+        total_broken = sum(len(v) for v in scan_results.values())
+        if total_broken == 0:
+            self.fix_attrs_scan_result_label.setText(self._tr("troubleshoot.fix_attrs.scan_ok"))
+            self._set_status(self._tr("troubleshoot.fix_attrs.scan_ok"))
+            return
+
+        self._fix_attrs_exe_dir = exe_path
+        self._fix_attrs_scan_results = scan_results
+        self.fix_attrs_scan_result_label.setText(
+            self._tr("troubleshoot.fix_attrs.scan_result").format(
+                count=total_broken, dlls=len(scan_results),
+            )
+        )
+        self.fix_attrs_repair_button.setEnabled(True)
+        self._set_status(
+            self._tr("troubleshoot.fix_attrs.scan_result").format(
+                count=total_broken, dlls=len(scan_results),
+            )
+        )
+
+    def _run_fix_attrs_repair(self) -> None:
+        """Step 2 – repair translated attributes and write corrected DLLs."""
+        exe_dir = getattr(self, "_fix_attrs_exe_dir", None)
+        scan_results = getattr(self, "_fix_attrs_scan_results", None)
+        if not scan_results or exe_dir is None:
+            return
+
+        self.fix_attrs_repair_button.setEnabled(False)
+        self.fix_attrs_progress_bar.setValue(0)
+        self.fix_attrs_progress_bar.setVisible(True)
+        QApplication.processEvents()
+
+        try:
+            total_fixed = 0
+            total_dlls = 0
+
+            def _on_progress(info: dict) -> None:
+                nonlocal total_fixed, total_dlls
+                total_fixed = info["total_fixed"]
+                total_dlls += 1
+                pct = int(total_dlls / len(scan_results) * 100)
+                self.fix_attrs_progress_bar.setValue(min(pct, 100))
+                QApplication.processEvents()
+
+            fixed, dlls, backup_dir = self._writer.repair_translated_xml_attrs(
+                exe_dir, progress_callback=_on_progress,
+            )
+
+            self.fix_attrs_progress_bar.setValue(100)
+            self.fix_attrs_result_label.setText(
+                self._tr("troubleshoot.fix_attrs.repair_done").format(
+                    count=fixed, dlls=dlls, backup=backup_dir,
+                )
+            )
+            self._set_status(
+                self._tr("troubleshoot.fix_attrs.repair_done").format(
+                    count=fixed, dlls=dlls, backup=backup_dir,
+                )
+            )
+        except Exception as exc:
+            self.fix_attrs_result_label.setText(
+                self._tr("troubleshoot.fix_attrs.repair_error").format(error=str(exc))
+            )
+            self._set_status(self._tr("status.operation_failed"))
+
     def _run_fix_xml_apply(self) -> None:
         """Step 3 – write corrected resources to the DLL files."""
         exe_dir = getattr(self, "_fix_xml_exe_dir", None)

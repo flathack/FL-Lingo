@@ -897,6 +897,49 @@ class UIBuildMixin:
         fix_xml_layout.addWidget(self.fix_xml_apply_result_label)
 
         content_layout.addWidget(self.fix_xml_group)
+        content_layout.addSpacing(12)
+
+        # ── Fix Translated XML Attributes ────────────────────────────
+        self.fix_attrs_group = QGroupBox(self._tr("troubleshoot.fix_attrs.title"))
+        fix_attrs_layout = QVBoxLayout(self.fix_attrs_group)
+        fix_attrs_layout.setContentsMargins(12, 14, 12, 12)
+        fix_attrs_layout.setSpacing(10)
+        self.fix_attrs_help_label = QLabel(self._tr("troubleshoot.fix_attrs.help"))
+        self.fix_attrs_help_label.setWordWrap(True)
+        self.fix_attrs_help_label.setStyleSheet("color: #8b95a7;")
+        fix_attrs_layout.addWidget(self.fix_attrs_help_label)
+
+        # Step 1: Scan
+        self.fix_attrs_scan_button = QPushButton(self._tr("troubleshoot.fix_attrs.scan_btn"))
+        self.fix_attrs_scan_button.setMinimumHeight(36)
+        self.fix_attrs_scan_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.fix_attrs_scan_button.clicked.connect(self._run_fix_attrs_scan)
+        fix_attrs_layout.addWidget(self.fix_attrs_scan_button)
+
+        self.fix_attrs_scan_result_label = QLabel("")
+        self.fix_attrs_scan_result_label.setWordWrap(True)
+        fix_attrs_layout.addWidget(self.fix_attrs_scan_result_label)
+
+        # Step 2: Repair & write
+        self.fix_attrs_repair_button = QPushButton(self._tr("troubleshoot.fix_attrs.repair_btn"))
+        self.fix_attrs_repair_button.setMinimumHeight(36)
+        self.fix_attrs_repair_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.fix_attrs_repair_button.setEnabled(False)
+        self.fix_attrs_repair_button.clicked.connect(self._run_fix_attrs_repair)
+        fix_attrs_layout.addWidget(self.fix_attrs_repair_button)
+
+        self.fix_attrs_progress_bar = QProgressBar()
+        self.fix_attrs_progress_bar.setMinimum(0)
+        self.fix_attrs_progress_bar.setMaximum(100)
+        self.fix_attrs_progress_bar.setValue(0)
+        self.fix_attrs_progress_bar.setVisible(False)
+        fix_attrs_layout.addWidget(self.fix_attrs_progress_bar)
+
+        self.fix_attrs_result_label = QLabel("")
+        self.fix_attrs_result_label.setWordWrap(True)
+        fix_attrs_layout.addWidget(self.fix_attrs_result_label)
+
+        content_layout.addWidget(self.fix_attrs_group)
         content_layout.addStretch(1)
         scroll.setWidget(content)
         layout.addWidget(scroll)

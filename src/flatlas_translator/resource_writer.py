@@ -6,6 +6,7 @@ import ctypes
 from ctypes import wintypes
 import filecmp
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -920,6 +921,175 @@ class ResourceWriter:
 
             if progress_callback:
                 progress_callback({"dll": dll_path.name, "fixed": len(needs_fix), "total_fixed": total_fixed})
+
+        return total_fixed, total_dlls_fixed, resolved_backup
+
+    # ------------------------------------------------------------------
+    # Repair: fix translated XML attributes in already-written DLLs
+    # ------------------------------------------------------------------
+
+    # Known XML attribute names that Google Translate may corrupt.
+    # Maps common mistranslations back to the correct English attribute.
+    _TRANSLATED_XML_ATTRS: dict[str, str] = {
+        # German
+        "kodierung": "encoding", "Kodierung": "encoding",
+        "Version": "version",
+        "farbe": "color", "Farbe": "color",
+        # French
+        "couleur": "color",
+        # Spanish
+        "codificación": "encoding", "codificacion": "encoding",
+        # Portuguese
+        "codificação": "encoding", "codificacao": "encoding",
+        # Italian
+        "codifica": "encoding", "colore": "color",
+        # Russian
+        "кодировка": "encoding", "цвет": "color",
+        # Common across languages
+        "versión": "version", "versão": "version", "versione": "version",
+    }
+
+    _RDL_TAG_RE = re.compile(r"<[^>]+>", re.DOTALL)
+    # Match translated attribute names that may appear with or without
+    # leading whitespace (Google Translate sometimes strips the space).
+    # Captures: (boundary_char)(wrong_attr)(=)
+    _TRANSLATED_ATTR_RE: re.Pattern[str] | None = None
+
+    @classmethod
+    def _build_attr_regex(cls) -> re.Pattern[str]:
+        if cls._TRANSLATED_ATTR_RE is not None:
+            return cls._TRANSLATED_ATTR_RE
+        # Sort longest-first to avoid partial matches
+        all_wrong = sorted(cls._TRANSLATED_XML_ATTRS.keys(), key=len, reverse=True)
+        alts = "|".join(re.escape(w) for w in all_wrong)
+        # Match the wrong attribute name preceded by whitespace or a quote,
+        # followed by optional whitespace and '='
+        cls._TRANSLATED_ATTR_RE = re.compile(
+            rf"""([\s"'])({alts})\s*=""",
+            re.IGNORECASE,
+        )
+        return cls._TRANSLATED_ATTR_RE
+
+    @classmethod
+    def _fix_translated_xml_attrs(cls, text: str) -> str:
+        """Replace incorrectly translated XML attribute names with originals."""
+        pattern = cls._build_attr_regex()
+
+        def _fix_tag(m: re.Match[str]) -> str:
+            tag = m.group(0)
+
+            def _replace_attr(am: re.Match[str]) -> str:
+                boundary = am.group(1)
+                wrong = am.group(2)
+                # Case-insensitive lookup
+                correct = None
+                for key, val in cls._TRANSLATED_XML_ATTRS.items():
+                    if key.lower() == wrong.lower():
+                        correct = val
+                        break
+                if correct is None:
+                    return am.group(0)
+                # Ensure a space before the attribute (boundary may be a quote)
+                if boundary in ('"', "'"):
+                    return f'{boundary} {correct}='
+                return f'{boundary}{correct}='
+
+            return pattern.sub(_replace_attr, tag)
+
+        return cls._RDL_TAG_RE.sub(_fix_tag, text)
+
+    def scan_translated_xml_attrs(
+        self,
+        exe_dir: Path,
+    ) -> dict[str, dict[int, str]]:
+        """Scan RT_HTML resources for infocards with translated XML attributes.
+
+        Returns ``{dll_name: {local_id: text, …}, …}`` for every DLL
+        containing at least one affected infocard.
+        """
+        exe_dir = Path(exe_dir)
+        if not exe_dir.is_dir():
+            raise FileNotFoundError(f"Directory not found: {exe_dir}")
+
+        dll_paths = sorted(
+            p for p in exe_dir.iterdir()
+            if p.is_file() and p.suffix.lower() == ".dll"
+        )
+        result: dict[str, dict[int, str]] = {}
+        for dll_path in dll_paths:
+            infos = self._html_reader.read_html_resources(dll_path)
+            if not infos:
+                continue
+            needs_fix: dict[int, str] = {}
+            for local_id, text in infos.items():
+                fixed = self._fix_translated_xml_attrs(text)
+                if fixed != text:
+                    needs_fix[local_id] = text
+            if needs_fix:
+                result[dll_path.name] = needs_fix
+        return result
+
+    def repair_translated_xml_attrs(
+        self,
+        exe_dir: Path,
+        *,
+        backup_dir: Path | None = None,
+        progress_callback=None,
+    ) -> tuple[int, int, Path]:
+        """Re-encode RT_HTML resources with corrected XML attribute names.
+
+        Returns (fixed_infocards, fixed_dlls, backup_dir).
+        """
+        exe_dir = Path(exe_dir)
+        if not exe_dir.is_dir():
+            raise FileNotFoundError(f"Directory not found: {exe_dir}")
+
+        dll_paths = sorted(p for p in exe_dir.iterdir() if p.is_file() and p.suffix.lower() == ".dll")
+        if not dll_paths:
+            raise RuntimeError(f"No DLL files found in {exe_dir}")
+
+        resolved_backup = Path(backup_dir) if backup_dir else self._make_backup_dir(exe_dir.parent, None)
+
+        total_fixed = 0
+        total_dlls_fixed = 0
+
+        for dll_path in dll_paths:
+            infos = self._html_reader.read_html_resources(dll_path)
+            if not infos:
+                continue
+
+            patched_infos: dict[int, str] = {}
+            fix_count = 0
+            for local_id, text in infos.items():
+                fixed = self._fix_translated_xml_attrs(text)
+                patched_infos[local_id] = fixed
+                if fixed != text:
+                    fix_count += 1
+
+            if fix_count == 0:
+                continue
+
+            # Backup before patching
+            bak_path = resolved_backup / dll_path.name
+            if not bak_path.is_file():
+                bak_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dll_path, bak_path)
+
+            ok, error = self._write_resource_dll_entries(
+                dll_path,
+                self._string_reader.read_strings(dll_path),
+                patched_infos,
+            )
+            if not ok:
+                if error == "no strings to write":
+                    continue
+                raise RuntimeError(f"Failed to repair {dll_path.name}: {error}")
+
+            total_fixed += fix_count
+            total_dlls_fixed += 1
+
+            if progress_callback:
+                progress_callback({"dll": dll_path.name, "fixed": fix_count, "total_fixed": total_fixed})
 
         return total_fixed, total_dlls_fixed, resolved_backup
 

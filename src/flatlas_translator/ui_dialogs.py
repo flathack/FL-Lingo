@@ -35,8 +35,8 @@ from .ui_themes import THEMES
 class SettingsDialog(QDialog):
     def __init__(self, current_theme: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        current_language = getattr(parent, "_lang", "de") if parent is not None else "de"
-        self.setWindowTitle("Einstellungen" if current_language == "de" else "Settings")
+        tr = getattr(parent, "_tr", lambda key: key) if parent is not None else (lambda key: key)
+        self.setWindowTitle(tr("dialog.settings.title"))
         self.selected_theme = current_theme
 
         layout = QVBoxLayout(self)
@@ -46,7 +46,7 @@ class SettingsDialog(QDialog):
         self.theme_combo.addItems(sorted(THEMES.keys()))
         self.theme_combo.setCurrentText(current_theme if current_theme in THEMES else "light")
 
-        grid.addWidget(QLabel("Theme"), 0, 0)
+        grid.addWidget(QLabel(tr("label.theme")), 0, 0)
         grid.addWidget(self.theme_combo, 0, 1)
         layout.addLayout(grid)
 
@@ -297,7 +297,7 @@ class BulkTranslatePanel(QWidget):
         self.result_table = QTableWidget()
         self.result_table.setColumnCount(3)
         self.result_table.setHorizontalHeaderLabels([
-            "DLL / ID",
+            tr("table.bulk_reference"),
             tr("dialog.bulk_col_source"),
             tr("dialog.bulk_col_target"),
         ])

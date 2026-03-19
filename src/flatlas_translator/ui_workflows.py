@@ -61,7 +61,7 @@ class UIWorkflowMixin:
             self,
             self._tr("dialog.export_visible"),
             str(Path.cwd() / "build" / "translator-export.json"),
-            "JSON Files (*.json)",
+            self._tr("dialog.file_filter_json"),
         )
         if not output_path:
             return
@@ -75,10 +75,9 @@ class UIWorkflowMixin:
         except Exception as exc:
             self._show_error(self._tr("error.export_failed").format(error=exc))
             return
-        if self._lang == "en":
-            self._set_status(f"{len(self._visible_units)} entries exported: {output_path}")
-        else:
-            self._set_status(f"{len(self._visible_units)} Einträge exportiert: {output_path}")
+        self._set_status(
+            self._tr("status.export_visible_done").format(count=len(self._visible_units), path=output_path)
+        )
 
     def _save_project_file(self) -> bool:
         if self._current_catalog() is None:
@@ -98,7 +97,7 @@ class UIWorkflowMixin:
             self,
             self._tr("dialog.project_save_as"),
             str(default_path),
-            f"FL Lingo Project (*{PROJECT_FILE_EXTENSION})",
+            self._tr("dialog.file_filter_project").format(extension=PROJECT_FILE_EXTENSION),
         )
         if not output_path:
             return False
@@ -128,7 +127,7 @@ class UIWorkflowMixin:
             self,
             self._tr("dialog.project_load"),
             str(self._project_path.parent if self._project_path is not None else (Path.cwd() / "build")),
-            f"FL Lingo Project (*{PROJECT_FILE_EXTENSION})",
+            self._tr("dialog.file_filter_project").format(extension=PROJECT_FILE_EXTENSION),
         )
         if not input_path:
             return
@@ -254,7 +253,16 @@ class UIWorkflowMixin:
         for dll_name in sorted(by_dll):
             bucket = by_dll[dll_name]
             lines.append(
-                f"{dll_name}: {bucket['action']} | units={bucket['units']} | strings={bucket['strings']} | infocards={bucket['infocards']}"
+                self._tr("dialog.apply_preview_line").format(
+                    dll=dll_name,
+                    action=bucket["action"],
+                    units_label=self._tr("apply.preview.units"),
+                    units=bucket["units"],
+                    strings_label=self._tr("apply.preview.strings"),
+                    strings=bucket["strings"],
+                    infocards_label=self._tr("apply.preview.infocards"),
+                    infocards=bucket["infocards"],
+                )
             )
         return "\n".join(lines)
 
@@ -336,7 +344,7 @@ class UIWorkflowMixin:
             self,
             self._tr("btn.export_mod_only"),
             str(Path.cwd() / "build" / "open-entries-exchange.json"),
-            "JSON Files (*.json)",
+            self._tr("dialog.file_filter_json"),
         )
         if not output_path:
             return
@@ -367,7 +375,7 @@ class UIWorkflowMixin:
             self,
             self._tr("btn.export_long_open"),
             str(Path.cwd() / "build" / "long-open-entries-exchange.json"),
-            "JSON Files (*.json)",
+            self._tr("dialog.file_filter_json"),
         )
         if not output_path:
             return
@@ -398,7 +406,7 @@ class UIWorkflowMixin:
             self,
             self._tr("btn.export_all_translated"),
             str(Path.cwd() / "build" / "all-translated-exchange.json"),
-            "JSON Files (*.json)",
+            self._tr("dialog.file_filter_json"),
         )
         if not output_path:
             return
@@ -425,7 +433,7 @@ class UIWorkflowMixin:
             self,
             self._tr("btn.import_exchange"),
             str(Path.cwd() / "build"),
-            "JSON Files (*.json)",
+            self._tr("dialog.file_filter_json"),
         )
         if not input_path:
             return
@@ -446,10 +454,9 @@ class UIWorkflowMixin:
         self._refresh_mod_override_entries()
         self._refresh_table()
         manual_count = sum(1 for unit in merged.units if unit.status == RelocalizationStatus.MANUAL_TRANSLATION)
-        if self._lang == "en":
-            self._set_status(f"{manual_count} manual translations loaded: {input_path}")
-        else:
-            self._set_status(f"{manual_count} manuelle Übersetzungen geladen: {input_path}")
+        self._set_status(
+            self._tr("status.import_loaded").format(count=manual_count, path=input_path)
+        )
 
     def _copy_reference_audio_files(self) -> None:
         resolved = self._resolve_source_and_reference_installs()
@@ -688,7 +695,9 @@ class UIWorkflowMixin:
             return
         QMessageBox.information(self, self._tr("dialog.toolchain_title"), self._tr("dialog.toolchain_started").format(path=script_path))
         self._set_status(self._tr("status.toolchain_started"))
-        self.toolchain_label.setText(f"Resource-Toolchain: {self._tr('status.toolchain_started')}")
+        self.toolchain_label.setText(
+            self._tr("label.resource_toolchain").format(state=self._tr("status.toolchain_started"))
+        )
 
     def _open_terminology_file(self) -> None:
         try:

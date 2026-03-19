@@ -285,7 +285,7 @@ class UIStateMixin:
             self.simple_translate_summary_label.setText(self._tr("simple.translate.idle"))
 
         toolchain_state = self._tr("toolchain.available") if self._writer.has_toolchain() else self._tr("simple.translate.no_toolchain")
-        self.simple_toolchain_label.setText(f"Resource-Toolchain: {toolchain_state}")
+        self.simple_toolchain_label.setText(self._tr("label.resource_toolchain").format(state=toolchain_state))
 
     def _default_install_path_hint(self, role: str) -> str:
         if self._writer.is_windows():
@@ -490,7 +490,7 @@ class UIStateMixin:
 
     def _refresh_toolchain_label(self) -> None:
         toolchain_state = self._tr("toolchain.available") if self._writer.has_toolchain() else self._tr("toolchain.unavailable")
-        self.toolchain_label.setText(f"Resource-Toolchain: {toolchain_state}")
+        self.toolchain_label.setText(self._tr("label.resource_toolchain").format(state=toolchain_state))
         self._refresh_simple_mode()
 
     def _retitle_combo_items(self) -> None:

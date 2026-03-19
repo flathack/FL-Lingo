@@ -1080,7 +1080,7 @@ class UIBuildMixin:
         row.addWidget(self._make_help_button("tooltip.filter_kind"))
         row.addWidget(self.kind_label)
         row.addWidget(self.kind_combo)
-        row.addWidget(QLabel("DLL"))
+        row.addWidget(QLabel(self._tr("label.dll")))
         row.addWidget(self.dll_combo)
         row.addWidget(self._make_help_button("tooltip.filter_status"))
         row.addWidget(self.status_label)
@@ -1185,7 +1185,7 @@ class UIBuildMixin:
         right_layout.addWidget(target_box, 1)
 
         toolchain_state = self._tr("toolchain.available") if self._writer.has_toolchain() else self._tr("toolchain.unavailable")
-        self.toolchain_label = QLabel(f"Resource-Toolchain: {toolchain_state}")
+        self.toolchain_label = QLabel(self._tr("label.resource_toolchain").format(state=toolchain_state))
         self.toolchain_label.setWordWrap(True)
         right_layout.addWidget(self.toolchain_label)
 

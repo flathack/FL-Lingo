@@ -459,5 +459,21 @@
   "dialog.bulk_eta_seconds": "⏱ ~{secondes} secondes restantes",
   "dialog.bulk_eta_minutes": "⏱ ~{minutes} min {secondes} secondes restantes",
   "dialog.bulk_eta_hours": "⏱ ~{hours} h {minutes} min restantes",
-  "table.plans.strings": "Chaînes source/cible"
+  "table.plans.strings": "Chaînes source/cible",
+  "apply.preview.infocards": "infocards",
+  "apply.preview.strings": "chaînes",
+  "apply.preview.units": "entrées",
+  "dialog.apply_preview_line": "{dll} : {action} | {units_label}={units} | {strings_label}={strings} | {infocards_label}={infocards}",
+  "dialog.file_filter_json": "Fichiers JSON (*.json)",
+  "dialog.file_filter_project": "Projet FL Lingo (*{extension})",
+  "dialog.settings.title": "Paramètres",
+  "label.dll": "DLL",
+  "label.global_id": "Identifiant global",
+  "label.local_id": "Identifiant local",
+  "label.resource_toolchain": "Chaîne d'outils des ressources : {state}",
+  "label.theme": "Thème",
+  "status.apply_done": "{language} appliqué : {count} entrées, sauvegarde dans {backup}",
+  "status.export_visible_done": "{count} entrées exportées : {path}",
+  "status.import_loaded": "{count} traductions manuelles chargées : {path}",
+  "table.bulk_reference": "DLL / ID"
 }

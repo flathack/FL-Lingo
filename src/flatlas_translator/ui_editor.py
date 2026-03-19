@@ -78,9 +78,9 @@ class UIEditorMixin:
                 [
                     f"{self._tr('detail.kind')}: {unit.kind}",
                     f"{self._tr('detail.status')}: {self._status_text(unit.status)}",
-                    f"DLL: {unit.source.dll_name}",
-                    f"Local ID: {unit.source.local_id}",
-                    f"Global ID: {unit.source.global_id}",
+                    f"{self._tr('label.dll')}: {unit.source.dll_name}",
+                    f"{self._tr('label.local_id')}: {unit.source.local_id}",
+                    f"{self._tr('label.global_id')}: {unit.source.global_id}",
                     f"{self._tr('detail.reference')}: {self._tr('yes') if unit.target else self._tr('no')}",
                     f"{self._tr('detail.manual')}: {self._tr('yes') if bool(unit.manual_text) else self._tr('no')}",
                     f"{self._tr('detail.changed')}: {self._tr('yes') if unit.is_changed else self._tr('no')}",

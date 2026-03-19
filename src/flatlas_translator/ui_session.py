@@ -385,10 +385,13 @@ class UISessionMixin:
                 backup=report.backup_dir,
             ),
         )
-        if self._lang == "en":
-            self._set_status(f"Applied {self._target_lang_code}: {report.replaced_units} entries, backup at {report.backup_dir}")
-        else:
-            self._set_status(f"{self._target_lang_code} angewendet: {report.replaced_units} Einträge, Backup unter {report.backup_dir}")
+        self._set_status(
+            self._tr("status.apply_done").format(
+                language=self._target_lang_code,
+                count=report.replaced_units,
+                backup=report.backup_dir,
+            )
+        )
         resolved = self._resolve_source_and_reference_installs()
         if resolved is not None:
             source_install, reference_install = resolved

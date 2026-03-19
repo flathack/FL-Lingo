@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false;qt.qpa.fonts=false")
 
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 DEVELOPED_BY = "Developed by Aldenmar Odin - flathack"
 APP_TITLE = "FL Lingo"
 DEFAULT_LANGUAGE = "en"

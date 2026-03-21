@@ -188,7 +188,7 @@ class TranslatorMainWindow(UIBuildMixin, UIStateMixin, UIEditorMixin, UISessionM
 
 class _DefaultConfig:
     app_title = "FL Lingo"
-    app_version = "0.1.3"
+    app_version = "0.2.1"
     developed_by = "Developed by Aldenmar Odin - flathack"
     default_language = "en"
     default_theme = "light"

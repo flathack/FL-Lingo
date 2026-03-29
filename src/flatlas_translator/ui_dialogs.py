@@ -392,7 +392,7 @@ class BulkTranslatePanel(QWidget):
 
     def restore_log(self, log_entries: list[tuple[str, str, str]]) -> None:
         """Restore previous log entries into the table without a full populate."""
-        self._log_entries = list(log_entries)
+        self._log_entries = [self._normalize_log_entry(*entry) for entry in log_entries]
         self.result_table.setRowCount(0)
         self.result_table.setUpdatesEnabled(False)
         for ref, old, new in self._log_entries:
@@ -409,6 +409,7 @@ class BulkTranslatePanel(QWidget):
 
     def _insert_table_row(self, ref: str, source: str, target: str) -> None:
         """Insert a row without scrolling (caller handles scroll after batch)."""
+        ref, source, target = self._normalize_log_entry(ref, source, target)
         row = self.result_table.rowCount()
         self.result_table.insertRow(row)
         self.result_table.setItem(row, 0, QTableWidgetItem(ref))
@@ -418,6 +419,10 @@ class BulkTranslatePanel(QWidget):
         tgt_item = QTableWidgetItem(target.replace("\n", " ")[:200])
         tgt_item.setToolTip(target)
         self.result_table.setItem(row, 2, tgt_item)
+
+    @staticmethod
+    def _normalize_log_entry(ref: object, source: object, target: object) -> tuple[str, str, str]:
+        return (str(ref or ""), str(source or ""), str(target or ""))
 
     def _append_table_row(self, ref: str, source: str, target: str) -> None:
         """Insert a row and scroll to bottom (used by populate/preview)."""
@@ -651,9 +656,9 @@ class BulkTranslatePanel(QWidget):
                 if status == "ok":
                     self._done += 1
                     self._translated_units.append((unit, result_text))
-                    entry = (ref, source_text, result_text)
+                    entry = self._normalize_log_entry(ref, source_text, result_text)
                 else:
-                    entry = (ref, source_text, f"\u274c {result_text}")
+                    entry = self._normalize_log_entry(ref, source_text, f"\u274c {result_text}")
                 self._log_entries.append(entry)
                 self._insert_table_row(*entry)
         finally:

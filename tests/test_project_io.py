@@ -129,3 +129,28 @@ def test_project_signature_changes_when_manual_text_changes() -> None:
     )
 
     assert project_signature(base) != project_signature(changed)
+
+
+def test_load_project_normalizes_null_bulk_translate_log_entries(tmp_path: Path) -> None:
+    payload = {
+        "format": PROJECT_FILE_FORMAT,
+        "version": 1,
+        "source_install_dir": "C:/source",
+        "target_install_dir": "C:/target",
+        "include_infocards": True,
+        "source_language": "en",
+        "target_language": "de",
+        "source_catalog": None,
+        "target_catalog": None,
+        "paired_catalog": None,
+        "bulk_translate_log": [["resources.dll:1", None, "Hallo"], [None, "Hello", None], ["skip-me"]],
+    }
+    project_path = tmp_path / "translator-project.FLLingo"
+    project_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = load_project(project_path)
+
+    assert loaded.bulk_translate_log == (
+        ("resources.dll:1", "", "Hallo"),
+        ("", "Hello", ""),
+    )

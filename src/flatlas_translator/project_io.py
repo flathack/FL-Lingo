@@ -56,10 +56,7 @@ def load_project(input_path: Path) -> TranslatorProject:
         paired_catalog=paired_catalog,
         dll_plans=dll_plans,
         en_ref_install_dir=str(payload.get("en_ref_install_dir", "") or ""),
-        bulk_translate_log=tuple(
-            tuple(entry) for entry in payload.get("bulk_translate_log", [])
-            if isinstance(entry, list) and len(entry) == 3
-        ),
+        bulk_translate_log=_bulk_translate_log_from_payload(payload.get("bulk_translate_log", [])),
     )
 
 
@@ -107,6 +104,18 @@ def _catalog_from_dict(payload: object) -> ResourceCatalog | None:
         freelancer_ini=Path(str(payload.get("freelancer_ini", ""))),
         units=units,
     )
+
+
+def _bulk_translate_log_from_payload(payload: object) -> tuple[tuple[str, str, str], ...]:
+    if not isinstance(payload, list):
+        return ()
+    entries: list[tuple[str, str, str]] = []
+    for entry in payload:
+        if not isinstance(entry, list) or len(entry) != 3:
+            continue
+        ref, source, target = entry
+        entries.append((str(ref or ""), str(source or ""), str(target or "")))
+    return tuple(entries)
 
 
 def _unit_from_dict(payload: object) -> TranslationUnit:

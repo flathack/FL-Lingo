@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -121,6 +123,21 @@ def test_translate_text_plain_unchanged(mock_google):
     assert result == "Hallo Welt"
 
 
+def test_translate_text_raises_when_provider_returns_none(monkeypatch):
+    class _FakeTranslator:
+        def __init__(self, source: str, target: str) -> None:
+            self.source = source
+            self.target = target
+
+        def translate(self, text: str):
+            return None
+
+    monkeypatch.setitem(sys.modules, "deep_translator", SimpleNamespace(GoogleTranslator=_FakeTranslator))
+
+    with pytest.raises(ValueError, match="returned no text"):
+        translate_text("Hello World", "en", "de", "google")
+
+
 # ---------------------------------------------------------------------------
 # translate_text_batch with mixed RDL and plain texts
 # ---------------------------------------------------------------------------
@@ -143,3 +160,21 @@ def test_batch_separates_rdl_from_plain(mock_batch, mock_single):
     # RDL text was handled individually, preserving structure
     assert "<RDL>" in results[1]
     assert "Tschuess" in results[1]
+
+
+def test_translate_text_batch_returns_exception_when_provider_returns_none(monkeypatch):
+    class _FakeTranslator:
+        def __init__(self, source: str, target: str) -> None:
+            self.source = source
+            self.target = target
+
+        def translate(self, text: str):
+            return None
+
+    monkeypatch.setitem(sys.modules, "deep_translator", SimpleNamespace(GoogleTranslator=_FakeTranslator))
+
+    results = translate_text_batch(["Hello World"], "en", "de", "google")
+
+    assert len(results) == 1
+    assert isinstance(results[0], ValueError)
+    assert "returned no text" in str(results[0])

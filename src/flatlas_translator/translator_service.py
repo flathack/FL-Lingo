@@ -51,6 +51,14 @@ def _translate_rdl_aware(
     return result
 
 
+def _require_translated_text(value: object) -> str:
+    if value is None:
+        raise ValueError("Translation service returned no text.")
+    if not isinstance(value, str):
+        raise TypeError(f"Translation service returned {type(value).__name__}, expected str.")
+    return value
+
+
 def translate_text(text: str, source_lang: str, target_lang: str, provider: str = "google") -> str:
     """Translate *text* from *source_lang* to *target_lang* using the specified provider.
 
@@ -132,7 +140,7 @@ def _translate_google(text: str, source_lang: str, target_lang: str) -> str:
     from deep_translator import GoogleTranslator  # lazy import
 
     translator = GoogleTranslator(source=source_lang, target=target_lang)
-    return translator.translate(text)
+    return _require_translated_text(translator.translate(text))
 
 
 def _translate_google_batch(
@@ -167,14 +175,14 @@ def _translate_google_batch(
 
         if len(batch_texts) == 1:
             try:
-                results[indices[0]] = translator.translate(batch_texts[0])
+                results[indices[0]] = _require_translated_text(translator.translate(batch_texts[0]))
             except Exception as exc:
                 results[indices[0]] = exc
             continue
 
         combined = _BATCH_SEPARATOR.join(batch_texts)
         try:
-            translated = translator.translate(combined)
+            translated = _require_translated_text(translator.translate(combined))
         except Exception as exc:
             for idx in indices:
                 results[idx] = exc
@@ -188,7 +196,7 @@ def _translate_google_batch(
             # Separator was not preserved – fall back to individual calls
             for idx, text in zip(indices, batch_texts):
                 try:
-                    results[idx] = translator.translate(text)
+                    results[idx] = _require_translated_text(translator.translate(text))
                 except Exception as exc:
                     results[idx] = exc
 
